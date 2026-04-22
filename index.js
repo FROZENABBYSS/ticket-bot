@@ -39,33 +39,40 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ================= VAULT DATA =================
+// ================= VAULT DATA (RAW GAME LIST) =================
 
-const categories = [
-  {
-    label: "🎮 A-F",
-    value: "af",
-    games: [
-      { name: "Hogwarts Legacy", tokens: 5 },
-      { name: "Hinokami Chronicles 2", tokens: 5 },
-    ],
-  },
-  {
-    label: "🎮 F-M",
-    value: "fm",
-    games: [{ name: "Far Cry Primal", tokens: 10 }],
-  },
-  {
-    label: "🎮 M-S",
-    value: "ms",
-    games: [{ name: "Resident Evil Requiem", tokens: 20 }],
-  },
-  {
-    label: "🎮 S-Y",
-    value: "sy",
-    games: [{ name: "Black Myth Wukong", tokens: 20 }],
-  },
+const games = [
+  { name: "Hogwarts Legacy", tokens: 5 },
+  { name: "Hinokami Chronicles 2", tokens: 5 },
+  { name: "Far Cry Primal", tokens: 10 },
+  { name: "Resident Evil Requiem", tokens: 20 },
+  { name: "Black Myth Wukong", tokens: 20 },
 ];
+
+// ================= AUTO CATEGORY SORT =================
+
+function getCategories() {
+  const af = [];
+  const fm = [];
+  const ms = [];
+  const sy = [];
+
+  for (const g of games) {
+    const first = g.name[0].toLowerCase();
+
+    if (first >= "a" && first <= "f") af.push(g);
+    else if (first >= "g" && first <= "l") fm.push(g);
+    else if (first >= "m" && first <= "r") ms.push(g);
+    else sy.push(g);
+  }
+
+  return [
+    { label: "🎮 A-F", value: "af", games: af },
+    { label: "🎮 G-L", value: "fm", games: fm },
+    { label: "🎮 M-R", value: "ms", games: ms },
+    { label: "🎮 S-Z", value: "sy", games: sy },
+  ];
+}
 
 // ================= FILE HELPERS =================
 
@@ -130,7 +137,7 @@ client.once("ready", async () => {
 
 // ================= PANEL EMBED =================
 
-function buildPanelEmbed() {
+function buildPanelEmbed(categories) {
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
     .setDescription(
@@ -138,10 +145,10 @@ function buildPanelEmbed() {
 0 Available  
 
 🎮 Games Listed  
-A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: ${categories[2].games.length} | S-Y: ${categories[3].games.length}
+A-F: ${categories[0].games.length} | G-L: ${categories[1].games.length} | M-R: ${categories[2].games.length} | S-Z: ${categories[3].games.length}
 
 🔥 High Demand  
-A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | F-M: ${categories[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-S: ${categories[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Y: ${categories[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${categories[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${categories[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${categories[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
 
 ━━━━━━━━━━━━━━━━━━
 🔥 High demand • 🟢 Plenty • 🟡 Low (≤10) • 🔴 Empty  
@@ -153,6 +160,8 @@ A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | F-M: ${categ
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
+
+  const categories = getCategories();
 
   // ===== SLASH COMMAND =====
   if (interaction.isChatInputCommand()) {
@@ -183,7 +192,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (mode === "send") {
 
-        const embed = buildPanelEmbed();
+        const embed = buildPanelEmbed(categories);
 
         const menu = new StringSelectMenuBuilder()
           .setCustomId("category_select")
@@ -216,36 +225,35 @@ client.on("interactionCreate", async (interaction) => {
   // ===== CATEGORY SELECT =====
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === "category_select") {
+    const cat = categories.find(c => c.value === interaction.values[0]);
+    if (!cat) return;
 
-      const cat = categories.find(c => c.value === interaction.values[0]);
+    const channel = await interaction.guild.channels.create({
+      name: `ticket-${interaction.user.username}`,
+      type: ChannelType.GuildText,
+      parent: TICKET_CATEGORY_ID,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel],
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+          ],
+        },
+      ],
+    });
 
-      const channel = await interaction.guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
-        type: ChannelType.GuildText,
-        parent: TICKET_CATEGORY_ID,
-        permissionOverwrites: [
-          {
-            id: interaction.guild.id,
-            deny: [PermissionsBitField.Flags.ViewChannel],
-          },
-          {
-            id: interaction.user.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-            ],
-          },
-        ],
-      });
+    const gamesText = cat.games
+      .map(g => `🎮 ${g.name} — ${g.tokens} Tokens`)
+      .join("\n");
 
-      const gamesText = cat.games
-        .map(g => `🎮 ${g.name} — ${g.tokens} Tokens`)
-        .join("\n");
-
-      const embed = new EmbedBuilder()
-        .setTitle("🎫 Ticket Opened")
-        .setDescription(
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 Ticket Opened")
+      .setDescription(
 `Category: ${cat.label}
 
 🎮 Available Games:
@@ -257,60 +265,45 @@ ${gamesText}
 • Game properties screenshot required
 • Clean game files (NO SteamTools)
 • WAIT FOR ASSISTANCE`
-        )
-        .setColor(0x00ffcc);
+      )
+      .setColor(0x00ffcc);
 
-      const closeBtn = new ButtonBuilder()
-        .setCustomId("close_ticket")
-        .setLabel("Close Ticket")
-        .setStyle(ButtonStyle.Danger);
+    const closeBtn = new ButtonBuilder()
+      .setCustomId("close_ticket")
+      .setLabel("Close Ticket")
+      .setStyle(ButtonStyle.Danger);
 
-      const row = new ActionRowBuilder().addComponents(closeBtn);
+    const row = new ActionRowBuilder().addComponents(closeBtn);
 
-      await channel.send({ embeds: [embed], components: [row] });
+    await channel.send({ embeds: [embed], components: [row] });
 
-      return interaction.reply({
-        content: `Ticket opened: ${channel}`,
-        ephemeral: true,
-      });
-    }
+    return interaction.reply({
+      content: `Ticket opened: ${channel}`,
+      ephemeral: true,
+    });
   }
 
-  // ===== CLOSE BUTTON (FIXED + SAFE) =====
+  // ===== CLOSE BUTTON =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
-      try {
-        const cooldowns = load(cooldownFile);
 
-        cooldowns[interaction.user.id] = Date.now();
-        save(cooldownFile, cooldowns);
+      const cooldowns = load(cooldownFile);
 
-        const member = interaction.member;
+      cooldowns[interaction.user.id] = Date.now();
+      save(cooldownFile, cooldowns);
 
-        if (member?.roles) {
-          await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
-        }
+      const member = interaction.member;
+      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
-        await interaction.reply({
-          content: "🔒 Ticket closing...",
-          ephemeral: true,
-        });
+      await interaction.reply({
+        content: "🔒 Ticket closing...",
+        ephemeral: true,
+      });
 
-        setTimeout(() => {
-          interaction.channel.delete().catch(() => {});
-        }, 2500);
-
-      } catch (err) {
-        console.log("Close error:", err);
-
-        if (!interaction.replied) {
-          await interaction.reply({
-            content: "❌ Failed to close ticket.",
-            ephemeral: true,
-          }).catch(() => {});
-        }
-      }
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 2500);
     }
   }
 });
