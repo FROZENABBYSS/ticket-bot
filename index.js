@@ -1,12 +1,3 @@
-// Discord Ticket Bot (discord.js v14)
-// FINAL CLEAN VERSION (UPDATED)
-// - Slash commands (/panel, /close)
-// - NO inner game selection (simplified system)
-// - Category-based ticket creation only
-// - Close button added inside ticket
-// - 48h cooldown system fixed
-// - Railway stable startup
-
 const {
   Client,
   GatewayIntentBits,
@@ -28,10 +19,10 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
+const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 
 const cooldownFile = "cooldowns.json";
-const keysFile = "keys.json";
 
 const client = new Client({
   intents: [
@@ -43,44 +34,41 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ================= CATEGORIES =================
+// ================= VAULT DATA =================
 
 const categories = [
   {
-    label: "A - F Vault",
-    value: "a-f",
-    emoji: "🔵",
+    label: "🎮 A-F",
+    value: "af",
     games: [
       { name: "Hogwarts Legacy", tokens: 5 },
       { name: "Hinokami Chronicles 2", tokens: 5 },
     ],
   },
   {
-    label: "G - L Vault",
-    value: "g-l",
-    emoji: "🟢",
-    games: [],
+    label: "🎮 F-M",
+    value: "fm",
+    games: [
+      { name: "Far Cry Primal", tokens: 10 },
+    ],
   },
   {
-    label: "M - R Vault",
-    value: "m-r",
-    emoji: "🟣",
+    label: "🎮 M-S",
+    value: "ms",
     games: [
       { name: "Resident Evil Requiem", tokens: 20 },
     ],
   },
   {
-    label: "S - Z Vault",
-    value: "s-z",
-    emoji: "🔴",
+    label: "🎮 S-Y",
+    value: "sy",
     games: [
       { name: "Black Myth Wukong", tokens: 20 },
-      { name: "Far Cry Primal", tokens: 10 },
     ],
   },
 ];
 
-// ================= FILE HELPERS =================
+// ================= FILES =================
 
 function load(file) {
   if (!fs.existsSync(file)) return {};
@@ -91,90 +79,62 @@ function save(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-// ================= SLASH COMMANDS =================
-
-const commands = [
-  { name: "panel", description: "Open ticket panel" },
-  { name: "close", description: "Close ticket" },
-];
-
-async function deployCommands() {
-  const rest = new REST({ version: "10" }).setToken(TOKEN);
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
-  console.log("Slash commands registered.");
-}
-
 // ================= READY =================
 
-client.once("ready", async () => {
+client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
-  await deployCommands();
+});
+
+// ================= PANEL =================
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "/panel") {
+
+    const embed = new EmbedBuilder()
+      .setTitle("✨ Steam Activation Vault")
+      .setDescription(
+`🎟️ Total Tokens In Vault  
+0 Available  
+
+🎮 Games Listed  
+A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: ${categories[2].games.length} | S-Y: ${categories[3].games.length}
+
+━━━━━━━━━━━━━━━━━━
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`
+      )
+      .setColor(0x6a0dad);
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("category_select")
+      .setPlaceholder("Select Vault Category")
+      .addOptions(
+        categories.map(c => ({
+          label: c.label,
+          value: c.value,
+        }))
+      );
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    await message.channel.send({ embeds: [embed], components: [row] });
+  }
 });
 
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
 
-  // SLASH COMMANDS
-  if (interaction.isChatInputCommand()) {
-
-    // PANEL
-    if (interaction.commandName === "panel") {
-
-      const embed = new EmbedBuilder()
-        .setTitle("✨ Steam Activation Vault")
-        .setDescription("Select a category to open your ticket.")
-        .setColor(0x6a0dad);
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("category_select")
-        .setPlaceholder("Select Vault Category")
-        .addOptions(
-          categories.map((c) => ({
-            label: c.label,
-            value: c.value,
-            emoji: c.emoji,
-          }))
-        );
-
-      const row = new ActionRowBuilder().addComponents(menu);
-
-      return interaction.reply({ embeds: [embed], components: [row] });
-    }
-
-    // CLOSE (backup slash close)
-    if (interaction.commandName === "close") {
-      const cooldowns = load(cooldownFile);
-
-      cooldowns[interaction.user.id] = Date.now();
-      save(cooldownFile, cooldowns);
-
-      const member = interaction.member;
-      await member.roles.add(COOLDOWN_ROLE_ID);
-
-      setTimeout(() => {
-        member.roles.remove(COOLDOWN_ROLE_ID);
-      }, 48 * 60 * 60 * 1000);
-
-      return interaction.reply("🔒 Ticket closed + 48h cooldown applied.");
-    }
-  }
-
   // CATEGORY SELECT
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "category_select") {
 
-      const selected = categories.find(
-        (c) => c.value === interaction.values[0]
-      );
+      const cat = categories.find(c => c.value === interaction.values[0]);
 
       const channel = await interaction.guild.channels.create({
         name: `ticket-${interaction.user.username}`,
         type: ChannelType.GuildText,
+        parent: TICKET_CATEGORY_ID,
         permissionOverwrites: [
           {
             id: interaction.guild.id,
@@ -190,17 +150,24 @@ client.on("interactionCreate", async (interaction) => {
         ],
       });
 
+      const gamesText = cat.games
+        .map(g => `🎮 ${g.name} — ${g.tokens} Tokens`)
+        .join("\n");
+
       const embed = new EmbedBuilder()
         .setTitle("🎫 Ticket Opened")
         .setDescription(
-`Category: **${selected.label}**
+`Category: ${cat.label}
+
+🎮 Available Games:
+${gamesText}
 
 ━━━━━━━━━━━━━━━━━━
 📌 Requirements:
-- Screenshot of game folder with WUB enabled
-- Game properties screenshot required
-- Clean game files (NOT SteamTools)
-- Wait for assistance`
+• Screenshot of game folder (WUB enabled)
+• Game properties screenshot required
+• Clean game files (NO SteamTools)
+• WAIT FOR ASSISTANCE`
         )
         .setColor(0x00ffcc);
 
@@ -214,7 +181,7 @@ client.on("interactionCreate", async (interaction) => {
       await channel.send({ embeds: [embed], components: [row] });
 
       return interaction.reply({
-        content: `Ticket created: ${channel}`,
+        content: `Ticket opened: ${channel}`,
         ephemeral: true,
       });
     }
@@ -237,7 +204,7 @@ client.on("interactionCreate", async (interaction) => {
         member.roles.remove(COOLDOWN_ROLE_ID);
       }, 48 * 60 * 60 * 1000);
 
-      await interaction.reply("🔒 Ticket closed.");
+      await interaction.reply("🔒 Ticket closed. Cooldown applied.");
 
       setTimeout(() => {
         interaction.channel.delete().catch(() => {});
