@@ -9,21 +9,17 @@ const {
   ButtonStyle,
   PermissionsBitField,
   ChannelType,
-  REST,
-  Routes,
 } = require("discord.js");
 
 const fs = require("fs");
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+// ================= ENV =================
 
+const TOKEN = process.env.TOKEN;
 const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 
 const cooldownFile = "cooldowns.json";
-const systemFile = "system.json";
 
 // ================= CLIENT =================
 
@@ -76,103 +72,57 @@ function save(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-// ================= PANEL STATE =================
-
-function isEnabled() {
-  const data = load(systemFile);
-  return data.enabled !== false; // default ON
-}
-
-// ================= SLASH COMMANDS =================
-
-const commands = [
-  {
-    name: "panel",
-    description: "Enable or disable ticket panel",
-    options: [
-      {
-        name: "mode",
-        type: 3,
-        description: "enable or disable",
-        required: true,
-        choices: [
-          { name: "enable", value: "enable" },
-          { name: "disable", value: "disable" },
-        ],
-      },
-    ],
-  },
-];
-
-async function deployCommands() {
-  const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-    body: commands,
-  });
-
-  console.log("Slash commands deployed");
-}
-
 // ================= READY =================
 
-client.once("ready", async () => {
+client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
-  await deployCommands();
+});
+
+// ================= PANEL COMMAND =================
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "/panel") {
+
+    const embed = new EmbedBuilder()
+      .setTitle("✨ Steam Activation Vault")
+      .setDescription(
+`🎟️ Total Tokens In Vault  
+0 Available  
+
+🎮 Games Listed  
+A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: ${categories[2].games.length} | S-Y: ${categories[3].games.length}
+
+🔥 High Demand  
+A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | 
+F-M: ${categories[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | 
+M-S: ${categories[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | 
+S-Y: ${categories[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+
+━━━━━━━━━━━━━━━━━━
+🔥 High demand • 🟢 Plenty • 🟡 Low (≤10) • 🔴 Empty  
+• Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+      )
+      .setColor(0x6a0dad);
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("category_select")
+      .setPlaceholder("Select Vault Category")
+      .addOptions(
+        categories.map((c) => ({
+          label: c.label,
+          value: c.value,
+        }))
+      );
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    await message.channel.send({ embeds: [embed], components: [row] });
+  }
 });
 
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
-
-  // ================= PANEL CONTROL =================
-  if (interaction.isChatInputCommand()) {
-
-    if (interaction.commandName === "panel") {
-      const mode = interaction.options.getString("mode");
-
-      const system = load(systemFile);
-
-      if (mode === "enable") {
-        system.enabled = true;
-        save(systemFile, system);
-
-        const embed = new EmbedBuilder()
-          .setTitle("✅ Panel Enabled")
-          .setDescription("Ticket system is now ACTIVE.")
-          .setColor(0x00ffcc);
-
-        await interaction.reply({ embeds: [embed] });
-
-        setTimeout(() => {
-          interaction.deleteReply().catch(() => {});
-        }, 5000);
-
-        return;
-      }
-
-      if (mode === "disable") {
-        system.enabled = false;
-        save(systemFile, system);
-
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Panel Disabled")
-          .setDescription("Ticket system is now OFF.")
-          .setColor(0xff0000);
-
-        await interaction.reply({ embeds: [embed] });
-
-        setTimeout(() => {
-          interaction.deleteReply().catch(() => {});
-        }, 5000);
-
-        return;
-      }
-    }
-  }
-
-  // BLOCK IF DISABLED
-  if (!isEnabled()) return;
 
   // ================= CATEGORY SELECT =================
 
@@ -210,7 +160,7 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(
 `Category: ${cat.label}
 
-🎮 Games:
+🎮 Available Games:
 ${gamesText}
 
 ━━━━━━━━━━━━━━━━━━
