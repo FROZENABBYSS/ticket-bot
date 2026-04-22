@@ -9,8 +9,6 @@ const {
   ButtonStyle,
   PermissionsBitField,
   ChannelType,
-  REST,
-  Routes,
 } = require("discord.js");
 
 const fs = require("fs");
@@ -68,7 +66,7 @@ const categories = [
   },
 ];
 
-// ================= FILES =================
+// ================= FILE HELPERS =================
 
 function load(file) {
   if (!fs.existsSync(file)) return {};
@@ -124,7 +122,6 @@ A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: $
 
 client.on("interactionCreate", async (interaction) => {
 
-  // CATEGORY SELECT
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "category_select") {
@@ -187,7 +184,6 @@ ${gamesText}
     }
   }
 
-  // CLOSE BUTTON
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
