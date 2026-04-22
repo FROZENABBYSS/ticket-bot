@@ -90,16 +90,17 @@ function isEnabled() {
 const commands = [
   {
     name: "panel",
-    description: "Enable or disable ticket panel system",
+    description: "Control Steam Vault system",
     options: [
       {
         name: "mode",
         type: 3,
-        description: "enable or disable",
+        description: "enable / disable / send",
         required: true,
         choices: [
           { name: "enable", value: "enable" },
           { name: "disable", value: "disable" },
+          { name: "send", value: "send" },
         ],
       },
     ],
@@ -123,7 +124,29 @@ client.once("ready", async () => {
   await deployCommands();
 });
 
-// ================= PANEL COMMAND (NEW FIX) =================
+// ================= PANEL EMBED (EXACT ONE YOU WANTED) =================
+
+function buildPanelEmbed() {
+  return new EmbedBuilder()
+    .setTitle("✨ Steam Activation Vault")
+    .setDescription(
+`🎟️ Total Tokens In Vault  
+0 Available  
+
+🎮 Games Listed  
+A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: ${categories[2].games.length} | S-Y: ${categories[3].games.length}
+
+🔥 High Demand  
+A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | F-M: ${categories[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-S: ${categories[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Y: ${categories[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+
+━━━━━━━━━━━━━━━━━━
+🔥 High demand • 🟢 Plenty • 🟡 Low (≤10) • 🔴 Empty  
+• Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+    )
+    .setColor(0x6a0dad);
+}
+
+// ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
 
@@ -132,52 +155,65 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "panel") {
       const mode = interaction.options.getString("mode");
-
       const system = load(systemFile);
 
       if (mode === "enable") {
         system.enabled = true;
         save(systemFile, system);
 
-        const embed = new EmbedBuilder()
-          .setTitle("✅ Panel Enabled")
-          .setDescription("Ticket system is now ACTIVE")
-          .setColor(0x00ffcc);
-
-        await interaction.reply({ embeds: [embed] });
-
-        setTimeout(() => {
-          interaction.deleteReply().catch(() => {});
-        }, 4000);
-
-        return;
+        return interaction.reply({
+          content: "✅ Panel system enabled",
+          ephemeral: true,
+        });
       }
 
       if (mode === "disable") {
         system.enabled = false;
         save(systemFile, system);
 
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Panel Disabled")
-          .setDescription("Ticket system is now OFF")
-          .setColor(0xff0000);
+        return interaction.reply({
+          content: "❌ Panel system disabled",
+          ephemeral: true,
+        });
+      }
 
-        await interaction.reply({ embeds: [embed] });
+      if (mode === "send") {
+
+        const embed = buildPanelEmbed();
+
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId("category_select")
+          .setPlaceholder("Select Vault Category")
+          .addOptions(
+            categories.map(c => ({
+              label: c.label,
+              value: c.value,
+            }))
+          );
+
+        const row = new ActionRowBuilder().addComponents(menu);
+
+        const msg = await interaction.channel.send({
+          embeds: [embed],
+          components: [row],
+        });
+
+        await interaction.reply({
+          content: "✅ Panel sent",
+          ephemeral: true,
+        });
 
         setTimeout(() => {
           interaction.deleteReply().catch(() => {});
-        }, 4000);
-
-        return;
+        }, 3000);
       }
     }
   }
 
-  // BLOCK IF SYSTEM OFF
+  // ===== BLOCK IF DISABLED =====
   if (!isEnabled()) return;
 
-  // ================= CATEGORY SELECT =================
-
+  // ===== CATEGORY SELECT =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "category_select") {
@@ -240,8 +276,7 @@ ${gamesText}
     }
   }
 
-  // ================= CLOSE BUTTON =================
-
+  // ===== CLOSE BUTTON =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
