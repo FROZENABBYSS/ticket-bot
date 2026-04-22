@@ -1,188 +1,225 @@
+// Discord Ticket Bot (discord.js v14)
+// Features:
+// - Dropdown ticket categories (A-Z vault style)
+// - Token pricing system
+// - Ticket creation system
+// - 48h cooldown after closing ticket
+// - Role reward after ticket close
+
 const {
   Client,
   GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  EmbedBuilder,
+  PermissionsBitField,
   ChannelType,
-  PermissionsBitField
-} = require('discord.js');
+} = require("discord.js");
 
-const fs = require('fs');
-require('dotenv').config();
+const fs = require("fs");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+  partials: [Partials.Channel],
 });
 
-// ❌ REMOVED HARD-CODED TOKEN
-const CATEGORY_ID = "1490727532763414561";
-const STAFF_ROLE_ID = "1490945882667876402";
+// ================= CONFIG =================
 
-// ---------------- SAFE KEYS ----------------
+const TOKEN = process.env.TOKEN;
+
+// role given after ticket close (limited role)
+const COOLDOWN_ROLE_ID = "1490210219702091986";
+
+// cooldown tracking file
+const cooldownFile = "cooldowns.json";
+const keysFile = "keys.json";
+
+// ================= DATA =================
+
+const categories = [
+  {
+    label: "A - L Vault",
+    value: "a-l",
+    emoji: "🔵",
+    games: [
+      { name: "Hogwarts Legacy", tokens: 5 },
+      { name: "Hinokami Chronicles 2", tokens: 5 },
+    ],
+  },
+  {
+    label: "M - R Vault",
+    value: "m-r",
+    emoji: "🟣",
+    games: [
+      { name: "Resident Evil Requiem", tokens: 20 },
+    ],
+  },
+  {
+    label: "S - Z Vault",
+    value: "s-z",
+    emoji: "🔴",
+    games: [
+      { name: "Black Myth Wukong", tokens: 20 },
+      { name: "Far Cry Primal", tokens: 10 },
+    ],
+  },
+];
+
+// ================= HELPERS =================
+
+function loadCooldowns() {
+  if (!fs.existsSync(cooldownFile)) return {};
+  return JSON.parse(fs.readFileSync(cooldownFile));
+}
+
+function saveCooldowns(data) {
+  fs.writeFileSync(cooldownFile, JSON.stringify(data, null, 2));
+}
+
 function loadKeys() {
-  try {
-    return JSON.parse(fs.readFileSync('./keys.json', 'utf8'));
-  } catch {
-    return {
-      "A-F": [],
-      "G-L": [],
-      "M-R": [],
-      "S-Z": []
-    };
-  }
+  if (!fs.existsSync(keysFile)) return {};
+  return JSON.parse(fs.readFileSync(keysFile));
 }
 
 function saveKeys(data) {
-  fs.writeFileSync('./keys.json', JSON.stringify(data, null, 2));
+  fs.writeFileSync(keysFile, JSON.stringify(data, null, 2));
 }
 
-// ---------------- STATUS SYSTEM ----------------
-function getStatus(count) {
-  if (count === 0) return "🔴 Empty";
-  if (count <= 10) return "🟡 Low (≤10)";
-  if (count <= 25) return "🟢 Plenty";
-  return "🔥 High Demand";
-}
+// ================= BOT READY =================
 
-// ---------------- BOT ----------------
+client.once("ready", () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+// ================= TICKET PANEL =================
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "/panel") {
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎮 Game Vault Ticket System")
+      .setDescription("Select a category to open a ticket and claim your game.")
+      .setColor(0x6a0dad);
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("game_select")
+      .setPlaceholder("Select a Vault Category")
+      .addOptions(
+        categories.map((c) => ({
+          label: c.label,
+          value: c.value,
+          emoji: c.emoji,
+        }))
+      );
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    await message.channel.send({ embeds: [embed], components: [row] });
+  }
+});
+
+// ================= INTERACTIONS =================
+
 client.on("interactionCreate", async (interaction) => {
 
-  // ================= VAULT COMMAND =================
-  if (interaction.isChatInputCommand()) {
+  // dropdown
+  if (interaction.isStringSelectMenu()) {
 
-    if (interaction.commandName === "vault") {
+    if (interaction.customId === "game_select") {
 
-      await interaction.deferReply();
+      const selected = categories.find(c => c.value === interaction.values[0]);
 
-      const data = loadKeys();
-
-      const a = data["A-F"]?.length || 0;
-      const g = data["G-L"]?.length || 0;
-      const m = data["M-R"]?.length || 0;
-      const s = data["S-Z"]?.length || 0;
-
-      const total = a + g + m + s;
+      const channel = await interaction.guild.channels.create({
+        name: `ticket-${interaction.user.username}`,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          {
+            id: interaction.guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+          },
+        ],
+      });
 
       const embed = new EmbedBuilder()
-        .setTitle("✨ Steam Activation Vault")
-        .setDescription(`
-🎟️ Total Tokens In Vault  
-\`${total} Available\`
+        .setTitle("🎫 Ticket Opened")
+        .setDescription(`Category: **${selected.label}**\nChoose your game below.`)
+        .setColor(0x00ffcc);
 
-🎮 Games Listed  
-A-F: ${a} | G-L: ${g} | M-R: ${m} | S-Z: ${s}
+      const gameMenu = new StringSelectMenuBuilder()
+        .setCustomId("game_choice")
+        .setPlaceholder("Select Game")
+        .addOptions(
+          selected.games.map(g => ({
+            label: `${g.name} - ${g.tokens} Tokens`,
+            value: g.name,
+          }))
+        );
 
-🔥 High Demand  
-A-F: ${getStatus(a)} | G-L: ${getStatus(g)} | M-R: ${getStatus(m)} | S-Z: ${getStatus(s)}
+      const row = new ActionRowBuilder().addComponents(gameMenu);
 
-━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low (≤10) • 🔴 Empty
-• Steam Token Vault • Tokens Regenerate As Stock Is Replenished
-        `)
-        .setColor("#5865F2");
+      await channel.send({ embeds: [embed], components: [row] });
 
-      const makeMenu = (id, label, count) =>
-        new StringSelectMenuBuilder()
-          .setCustomId(id)
-          .setPlaceholder(`${label} (${count})`)
-          .addOptions([{ label: `${label} Vault`, value: id }]);
+      await interaction.reply({ content: `Ticket created: ${channel}`, ephemeral: true });
+    }
 
-      const rows = [
-        new ActionRowBuilder().addComponents(makeMenu("A-F", "A - F", a)),
-        new ActionRowBuilder().addComponents(makeMenu("G-L", "G - L", g)),
-        new ActionRowBuilder().addComponents(makeMenu("M-R", "M - R", m)),
-        new ActionRowBuilder().addComponents(makeMenu("S-Z", "S - Z", s))
-      ];
+    // game selection
+    if (interaction.customId === "game_choice") {
 
-      await interaction.editReply({
-        embeds: [embed],
-        components: rows
+      const gameName = interaction.values[0];
+      const keys = loadKeys();
+
+      const cooldowns = loadCooldowns();
+
+      if (cooldowns[interaction.user.id]) {
+        const diff = Date.now() - cooldowns[interaction.user.id];
+        const days = 48 * 60 * 60 * 1000;
+
+        if (diff < days) {
+          return interaction.reply({ content: "⏳ You are on a 48h cooldown.", ephemeral: true });
+        }
+      }
+
+      keys[interaction.user.id] = keys[interaction.user.id] || [];
+      keys[interaction.user.id].push(gameName);
+
+      saveKeys(keys);
+
+      await interaction.reply({
+        content: `✅ You claimed **${gameName}**! Staff will process it soon.`,
+        ephemeral: true,
       });
     }
   }
 
-  // ================= DROPDOWN =================
-  if (!interaction.isStringSelectMenu()) return;
+  // close ticket system
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "close") {
 
-  const category = interaction.customId;
-  const data = loadKeys();
+      const userId = interaction.user.id;
+      const cooldowns = loadCooldowns();
 
-  if (!data[category]) {
-    return interaction.reply({
-      content: "❌ Invalid category",
-      ephemeral: true
-    });
-  }
+      cooldowns[userId] = Date.now();
+      saveCooldowns(cooldowns);
 
-  if (data[category].length === 0) {
-    return interaction.reply({
-      content: "🔴 This vault is empty!",
-      ephemeral: true
-    });
-  }
+      const member = interaction.member;
+      await member.roles.add(COOLDOWN_ROLE_ID);
 
-  const key = data[category].shift();
-  saveKeys(data);
+      setTimeout(() => {
+        member.roles.remove(COOLDOWN_ROLE_ID);
+      }, 48 * 60 * 60 * 1000);
 
-  const channel = await interaction.guild.channels.create({
-    name: `ticket-${interaction.user.username}`,
-    type: ChannelType.GuildText,
-    parent: CATEGORY_ID,
-    permissionOverwrites: [
-      {
-        id: interaction.guild.id,
-        deny: [PermissionsBitField.Flags.ViewChannel],
-      },
-      {
-        id: interaction.user.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages
-        ],
-      },
-      {
-        id: STAFF_ROLE_ID,
-        allow: [PermissionsBitField.Flags.ViewChannel]
-      }
-    ],
-  });
-
-  await channel.send({
-    content: `🎟️ <@${interaction.user.id}>\n🔑 \`${key}\``
-  });
-
-  await channel.send({
-    content: `📌 **Ticket Instructions**
-
-✔ Must have clean game files installed  
-✔ Provide screenshot of game folder  
-✔ Enable WUB in game properties  
-✔ Wait for staff assistance  
-
-━━━━━━━━━━━━━━━━━━
-Please do not spam or resend requests.`
-  });
-
-  await interaction.reply({
-    content: `✅ Ticket created: ${channel}`,
-    ephemeral: true
-  });
-});
-
-// ---------------- READY ----------------
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-
-  await client.application.commands.set([
-    {
-      name: "vault",
-      description: "Open Steam Activation Vault"
+      await interaction.reply("🔒 Ticket closed + cooldown applied (48h)");
     }
-  ]);
-
-  console.log("System Ready!");
+  }
 });
 
-// ---------------- LOGIN ----------------
-client.login(process.env.TOKEN);
+client.login(TOKEN);
