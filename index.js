@@ -9,6 +9,8 @@ const {
   ButtonStyle,
   PermissionsBitField,
   ChannelType,
+  REST,
+  Routes,
 } = require("discord.js");
 
 const fs = require("fs");
@@ -21,6 +23,9 @@ const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 
 const cooldownFile = "cooldowns.json";
+const systemFile = "system.json";
+
+// ================= CLIENT =================
 
 const client = new Client({
   intents: [
@@ -77,51 +82,82 @@ function save(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
+// ================= SLASH COMMANDS =================
+
+const commands = [
+  {
+    name: "panel",
+    description: "Control ticket panel",
+    options: [
+      {
+        name: "mode",
+        type: 3,
+        description: "enable or disable panel",
+        required: true,
+        choices: [
+          { name: "enable", value: "enable" },
+          { name: "disable", value: "disable" },
+        ],
+      },
+    ],
+  },
+];
+
+async function deployCommands() {
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
+
+  console.log("Slash commands deployed");
+}
+
 // ================= READY =================
 
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  await deployCommands();
 });
 
-// ================= PANEL =================
+// ================= PANEL SYSTEM STATE =================
 
-client.on("messageCreate", async (message) => {
-  if (message.content === "/panel") {
-
-    const embed = new EmbedBuilder()
-      .setTitle("✨ Steam Activation Vault")
-      .setDescription(
-`🎟️ Total Tokens In Vault  
-0 Available  
-
-🎮 Games Listed  
-A-F: ${categories[0].games.length} | F-M: ${categories[1].games.length} | M-S: ${categories[2].games.length} | S-Y: ${categories[3].games.length}
-
-━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`
-      )
-      .setColor(0x6a0dad);
-
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("category_select")
-      .setPlaceholder("Select Vault Category")
-      .addOptions(
-        categories.map(c => ({
-          label: c.label,
-          value: c.value,
-        }))
-      );
-
-    const row = new ActionRowBuilder().addComponents(menu);
-
-    await message.channel.send({ embeds: [embed], components: [row] });
-  }
-});
+function isEnabled() {
+  const data = load(systemFile);
+  return data.enabled !== false; // default true
+}
 
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
 
+  // SLASH COMMAND
+  if (interaction.isChatInputCommand()) {
+
+    if (interaction.commandName === "panel") {
+
+      const mode = interaction.options.getString("mode");
+      const system = load(systemFile);
+
+      if (mode === "enable") {
+        system.enabled = true;
+        save(systemFile, system);
+        return interaction.reply("✅ Panel system enabled");
+      }
+
+      if (mode === "disable") {
+        system.enabled = false;
+        save(systemFile, system);
+        return interaction.reply("❌ Panel system disabled");
+      }
+    }
+  }
+
+  // BLOCK IF DISABLED
+  if (!isEnabled()) return;
+
+  // CATEGORY SELECT
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "category_select") {
@@ -156,7 +192,7 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(
 `Category: ${cat.label}
 
-🎮 Available Games:
+🎮 Games:
 ${gamesText}
 
 ━━━━━━━━━━━━━━━━━━
@@ -184,6 +220,7 @@ ${gamesText}
     }
   }
 
+  // CLOSE BUTTON
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
@@ -200,7 +237,7 @@ ${gamesText}
         member.roles.remove(COOLDOWN_ROLE_ID);
       }, 48 * 60 * 60 * 1000);
 
-      await interaction.reply("🔒 Ticket closed. Cooldown applied.");
+      await interaction.reply("🔒 Ticket closed.");
 
       setTimeout(() => {
         interaction.channel.delete().catch(() => {});
