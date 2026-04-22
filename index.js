@@ -51,23 +51,17 @@ const categories = [
   {
     label: "🎮 F-M",
     value: "fm",
-    games: [
-      { name: "Far Cry Primal", tokens: 10 },
-    ],
+    games: [{ name: "Far Cry Primal", tokens: 10 }],
   },
   {
     label: "🎮 M-S",
     value: "ms",
-    games: [
-      { name: "Resident Evil Requiem", tokens: 20 },
-    ],
+    games: [{ name: "Resident Evil Requiem", tokens: 20 }],
   },
   {
     label: "🎮 S-Y",
     value: "sy",
-    games: [
-      { name: "Black Myth Wukong", tokens: 20 },
-    ],
+    games: [{ name: "Black Myth Wukong", tokens: 20 }],
   },
 ];
 
@@ -82,17 +76,24 @@ function save(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
+// ================= PANEL STATE =================
+
+function isEnabled() {
+  const data = load(systemFile);
+  return data.enabled !== false; // default ON
+}
+
 // ================= SLASH COMMANDS =================
 
 const commands = [
   {
     name: "panel",
-    description: "Control ticket panel",
+    description: "Enable or disable ticket panel",
     options: [
       {
         name: "mode",
         type: 3,
-        description: "enable or disable panel",
+        description: "enable or disable",
         required: true,
         choices: [
           { name: "enable", value: "enable" },
@@ -106,10 +107,9 @@ const commands = [
 async function deployCommands() {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+    body: commands,
+  });
 
   console.log("Slash commands deployed");
 }
@@ -121,35 +121,52 @@ client.once("ready", async () => {
   await deployCommands();
 });
 
-// ================= PANEL SYSTEM STATE =================
-
-function isEnabled() {
-  const data = load(systemFile);
-  return data.enabled !== false; // default true
-}
-
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
 
-  // SLASH COMMAND
+  // ================= PANEL CONTROL =================
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "panel") {
-
       const mode = interaction.options.getString("mode");
+
       const system = load(systemFile);
 
       if (mode === "enable") {
         system.enabled = true;
         save(systemFile, system);
-        return interaction.reply("✅ Panel system enabled");
+
+        const embed = new EmbedBuilder()
+          .setTitle("✅ Panel Enabled")
+          .setDescription("Ticket system is now ACTIVE.")
+          .setColor(0x00ffcc);
+
+        await interaction.reply({ embeds: [embed] });
+
+        setTimeout(() => {
+          interaction.deleteReply().catch(() => {});
+        }, 5000);
+
+        return;
       }
 
       if (mode === "disable") {
         system.enabled = false;
         save(systemFile, system);
-        return interaction.reply("❌ Panel system disabled");
+
+        const embed = new EmbedBuilder()
+          .setTitle("❌ Panel Disabled")
+          .setDescription("Ticket system is now OFF.")
+          .setColor(0xff0000);
+
+        await interaction.reply({ embeds: [embed] });
+
+        setTimeout(() => {
+          interaction.deleteReply().catch(() => {});
+        }, 5000);
+
+        return;
       }
     }
   }
@@ -157,7 +174,8 @@ client.on("interactionCreate", async (interaction) => {
   // BLOCK IF DISABLED
   if (!isEnabled()) return;
 
-  // CATEGORY SELECT
+  // ================= CATEGORY SELECT =================
+
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "category_select") {
@@ -220,7 +238,8 @@ ${gamesText}
     }
   }
 
-  // CLOSE BUTTON
+  // ================= CLOSE BUTTON =================
+
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
