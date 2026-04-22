@@ -1,9 +1,11 @@
 // Discord Ticket Bot (discord.js v14)
-// FIXED VERSION:
-// - Proper Slash Commands (/panel, /close)
-// - Auto command registration (REST)
-// - Fixed interaction system
-// - Stable deployment for Railway
+// FINAL CLEAN VERSION (UPDATED)
+// - Slash commands (/panel, /close)
+// - NO inner game selection (simplified system)
+// - Category-based ticket creation only
+// - Close button added inside ticket
+// - 48h cooldown system fixed
+// - Railway stable startup
 
 const {
   Client,
@@ -12,6 +14,8 @@ const {
   EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   PermissionsBitField,
   ChannelType,
   REST,
@@ -43,13 +47,19 @@ const client = new Client({
 
 const categories = [
   {
-    label: "A - L Vault",
-    value: "a-l",
+    label: "A - F Vault",
+    value: "a-f",
     emoji: "🔵",
     games: [
       { name: "Hogwarts Legacy", tokens: 5 },
       { name: "Hinokami Chronicles 2", tokens: 5 },
     ],
+  },
+  {
+    label: "G - L Vault",
+    value: "g-l",
+    emoji: "🟢",
+    games: [],
   },
   {
     label: "M - R Vault",
@@ -84,14 +94,8 @@ function save(file, data) {
 // ================= SLASH COMMANDS =================
 
 const commands = [
-  {
-    name: "panel",
-    description: "Open ticket panel",
-  },
-  {
-    name: "close",
-    description: "Close ticket",
-  },
+  { name: "panel", description: "Open ticket panel" },
+  { name: "close", description: "Close ticket" },
 ];
 
 async function deployCommands() {
@@ -114,18 +118,19 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async (interaction) => {
 
-  // /panel command
+  // SLASH COMMANDS
   if (interaction.isChatInputCommand()) {
 
+    // PANEL
     if (interaction.commandName === "panel") {
 
       const embed = new EmbedBuilder()
-        .setTitle("🎮 Game Vault Ticket System")
-        .setDescription("Select a category to open a ticket.")
+        .setTitle("✨ Steam Activation Vault")
+        .setDescription("Select a category to open your ticket.")
         .setColor(0x6a0dad);
 
       const menu = new StringSelectMenuBuilder()
-        .setCustomId("game_select")
+        .setCustomId("category_select")
         .setPlaceholder("Select Vault Category")
         .addOptions(
           categories.map((c) => ({
@@ -140,9 +145,8 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ embeds: [embed], components: [row] });
     }
 
-    // /close command
+    // CLOSE (backup slash close)
     if (interaction.commandName === "close") {
-
       const cooldowns = load(cooldownFile);
 
       cooldowns[interaction.user.id] = Date.now();
@@ -159,10 +163,10 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // dropdown category
+  // CATEGORY SELECT
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === "game_select") {
+    if (interaction.customId === "category_select") {
 
       const selected = categories.find(
         (c) => c.value === interaction.values[0]
@@ -188,20 +192,24 @@ client.on("interactionCreate", async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setTitle("🎫 Ticket Opened")
-        .setDescription(`Category: **${selected.label}**`)
+        .setDescription(
+`Category: **${selected.label}**
+
+━━━━━━━━━━━━━━━━━━
+📌 Requirements:
+- Screenshot of game folder with WUB enabled
+- Game properties screenshot required
+- Clean game files (NOT SteamTools)
+- Wait for assistance`
+        )
         .setColor(0x00ffcc);
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("game_choice")
-        .setPlaceholder("Select Game")
-        .addOptions(
-          selected.games.map((g) => ({
-            label: `${g.name} - ${g.tokens} Tokens`,
-            value: g.name,
-          }))
-        );
+      const closeBtn = new ButtonBuilder()
+        .setCustomId("close_ticket")
+        .setLabel("Close Ticket")
+        .setStyle(ButtonStyle.Danger);
 
-      const row = new ActionRowBuilder().addComponents(menu);
+      const row = new ActionRowBuilder().addComponents(closeBtn);
 
       await channel.send({ embeds: [embed], components: [row] });
 
@@ -210,34 +218,30 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
     }
+  }
 
-    // game selection
-    if (interaction.customId === "game_choice") {
+  // CLOSE BUTTON
+  if (interaction.isButton()) {
 
-      const keys = load(keysFile);
+    if (interaction.customId === "close_ticket") {
+
       const cooldowns = load(cooldownFile);
 
-      if (cooldowns[interaction.user.id]) {
-        const diff = Date.now() - cooldowns[interaction.user.id];
-        const limit = 48 * 60 * 60 * 1000;
+      cooldowns[interaction.user.id] = Date.now();
+      save(cooldownFile, cooldowns);
 
-        if (diff < limit) {
-          return interaction.reply({
-            content: "⏳ You are on a 48h cooldown.",
-            ephemeral: true,
-          });
-        }
-      }
+      const member = interaction.member;
+      await member.roles.add(COOLDOWN_ROLE_ID);
 
-      keys[interaction.user.id] = keys[interaction.user.id] || [];
-      keys[interaction.user.id].push(interaction.values[0]);
+      setTimeout(() => {
+        member.roles.remove(COOLDOWN_ROLE_ID);
+      }, 48 * 60 * 60 * 1000);
 
-      save(keysFile, keys);
+      await interaction.reply("🔒 Ticket closed.");
 
-      return interaction.reply({
-        content: `✅ You claimed **${interaction.values[0]}**`,
-        ephemeral: true,
-      });
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 3000);
     }
   }
 });
