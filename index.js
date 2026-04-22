@@ -39,7 +39,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ================= VAULT DATA (RAW GAME LIST) =================
+// ================= VAULT DATA =================
 
 const games = [
   { name: "Hogwarts Legacy", tokens: 5 },
@@ -52,25 +52,22 @@ const games = [
 // ================= AUTO CATEGORY SORT =================
 
 function getCategories() {
-  const af = [];
-  const fm = [];
-  const ms = [];
-  const sy = [];
+  const af = [], gl = [], mr = [], sz = [];
 
   for (const g of games) {
     const first = g.name[0].toLowerCase();
 
     if (first >= "a" && first <= "f") af.push(g);
-    else if (first >= "g" && first <= "l") fm.push(g);
-    else if (first >= "m" && first <= "r") ms.push(g);
-    else sy.push(g);
+    else if (first >= "g" && first <= "l") gl.push(g);
+    else if (first >= "m" && first <= "r") mr.push(g);
+    else sz.push(g);
   }
 
   return [
     { label: "🎮 A-F", value: "af", games: af },
-    { label: "🎮 G-L", value: "fm", games: fm },
-    { label: "🎮 M-R", value: "ms", games: ms },
-    { label: "🎮 S-Z", value: "sy", games: sy },
+    { label: "🎮 G-L", value: "gl", games: gl },
+    { label: "🎮 M-R", value: "mr", games: mr },
+    { label: "🎮 S-Z", value: "sz", games: sz },
   ];
 }
 
@@ -157,6 +154,79 @@ A-F: ${categories[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${categ
     .setColor(0x6a0dad);
 }
 
+// ================= TRANSCRIPT (UPGRADED HTML) =================
+
+async function generateTranscript(channel, user) {
+  let messages = [];
+  let lastId;
+
+  while (true) {
+    const fetched = await channel.messages.fetch({ limit: 100, before: lastId });
+    if (fetched.size === 0) break;
+
+    messages = messages.concat(Array.from(fetched.values()));
+    lastId = fetched.last().id;
+  }
+
+  messages.reverse();
+
+  const ticketNumber = Math.floor(Math.random() * 1000);
+  const createdAt = new Date(messages[0]?.createdTimestamp || Date.now());
+  const closedAt = new Date();
+
+  const duration = Math.floor((closedAt - createdAt) / 60000);
+
+  let messageHTML = "";
+
+  for (const m of messages) {
+    const time = new Date(m.createdTimestamp).toLocaleString();
+    messageHTML += `
+      <div class="msg">
+        <span class="time">[${time}]</span>
+        <span class="user">${m.author.tag}:</span>
+        <span class="content">${m.content || "(no text)"}</span>
+      </div>
+    `;
+  }
+
+  const html = `
+  <html>
+  <head>
+    <title>Transcript</title>
+    <style>
+      body { font-family: Arial; background: #111; color: #eee; padding: 20px; }
+      .header { margin-bottom: 20px; }
+      .msg { margin-bottom: 8px; }
+      .time { color: #888; }
+      .user { color: #00ffcc; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+
+  <div class="header">
+  <h2>📄 Auto-Generated Transcript</h2>
+  <p>Transcript automatically generated for ticket #${ticketNumber}</p>
+
+  <p>🎫 Ticket #${ticketNumber} • Created by ${user.tag} • ${messages.length} messages</p>
+  <p>⏱️ Duration: ${duration} minutes • Status: Closed (Auto-transcript)</p>
+  <p>🏷️ Subject: 🎟️ ACTIVATION</p>
+  <p>📅 Generated ${new Date().toLocaleString()}</p>
+  </div>
+
+  <hr/>
+
+  ${messageHTML}
+
+  </body>
+  </html>
+  `;
+
+  const fileName = `ticket-${ticketNumber}-transcript.html`;
+  fs.writeFileSync(fileName, html);
+
+  return fileName;
+}
+
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
@@ -173,53 +243,32 @@ client.on("interactionCreate", async (interaction) => {
       if (mode === "enable") {
         system.enabled = true;
         save(systemFile, system);
-
-        return interaction.reply({
-          content: "✅ Panel system enabled",
-          ephemeral: true,
-        });
+        return interaction.reply({ content: "✅ Panel system enabled", ephemeral: true });
       }
 
       if (mode === "disable") {
         system.enabled = false;
         save(systemFile, system);
-
-        return interaction.reply({
-          content: "❌ Panel system disabled",
-          ephemeral: true,
-        });
+        return interaction.reply({ content: "❌ Panel system disabled", ephemeral: true });
       }
 
       if (mode === "send") {
-
         const embed = buildPanelEmbed(categories);
 
         const menu = new StringSelectMenuBuilder()
           .setCustomId("category_select")
           .setPlaceholder("Select Vault Category")
-          .addOptions(
-            categories.map(c => ({
-              label: c.label,
-              value: c.value,
-            }))
-          );
+          .addOptions(categories.map(c => ({ label: c.label, value: c.value })));
 
         const row = new ActionRowBuilder().addComponents(menu);
 
-        await interaction.channel.send({
-          embeds: [embed],
-          components: [row],
-        });
+        await interaction.channel.send({ embeds: [embed], components: [row] });
 
-        return interaction.reply({
-          content: "✅ Panel sent",
-          ephemeral: true,
-        });
+        return interaction.reply({ content: "✅ Panel sent", ephemeral: true });
       }
     }
   }
 
-  // ===== BLOCK IF DISABLED =====
   if (!isEnabled()) return;
 
   // ===== CATEGORY SELECT =====
@@ -233,23 +282,15 @@ client.on("interactionCreate", async (interaction) => {
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
       permissionOverwrites: [
-        {
-          id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel],
-        },
+        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
         {
           id: interaction.user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages,
-          ],
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
         },
       ],
     });
 
-    const gamesText = cat.games
-      .map(g => `🎮 ${g.name} — ${g.tokens} Tokens`)
-      .join("\n");
+    const gamesText = cat.games.map(g => `🎮 ${g.name} — ${g.tokens} Tokens`).join("\n");
 
     const embed = new EmbedBuilder()
       .setTitle("🎫 Ticket Opened")
@@ -277,10 +318,7 @@ ${gamesText}
 
     await channel.send({ embeds: [embed], components: [row] });
 
-    return interaction.reply({
-      content: `Ticket opened: ${channel}`,
-      ephemeral: true,
-    });
+    return interaction.reply({ content: `Ticket opened: ${channel}`, ephemeral: true });
   }
 
   // ===== CLOSE BUTTON =====
@@ -288,22 +326,29 @@ ${gamesText}
 
     if (interaction.customId === "close_ticket") {
 
-      const cooldowns = load(cooldownFile);
-
-      cooldowns[interaction.user.id] = Date.now();
-      save(cooldownFile, cooldowns);
-
       const member = interaction.member;
-      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+
+      const file = await generateTranscript(interaction.channel, interaction.user);
 
       await interaction.reply({
-        content: "🔒 Ticket closing...",
+        content: "🔒 Ticket closing... Transcript generated.",
         ephemeral: true,
       });
 
+      await interaction.user.send({
+        content: "📄 Your ticket transcript:",
+        files: [file],
+      }).catch(() => {});
+
+      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+
+      setTimeout(() => {
+        member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
+      }, 48 * 60 * 60 * 1000);
+
       setTimeout(() => {
         interaction.channel.delete().catch(() => {});
-      }, 2500);
+      }, 3000);
     }
   }
 });
