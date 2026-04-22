@@ -23,6 +23,7 @@ const GUILD_ID = process.env.GUILD_ID;
 
 const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
+const TRANSCRIPT_CHANNEL_ID = "1490947113939632209"; // ✅ YOUR CHANNEL
 
 const systemFile = "system.json";
 
@@ -48,7 +49,7 @@ const games = [
   { name: "Black Myth Wukong", tokens: 20 },
 ];
 
-// ================= AUTO CATEGORY SORT =================
+// ================= AUTO CATEGORY =================
 
 function getCategories() {
   const af = [], gl = [], mr = [], sz = [];
@@ -128,7 +129,7 @@ client.once("ready", async () => {
   await deployCommands();
 });
 
-// ================= PANEL EMBED =================
+// ================= PANEL =================
 
 function buildPanelEmbed(c) {
   return new EmbedBuilder()
@@ -219,7 +220,6 @@ client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
 
-  // ===== SLASH =====
   if (interaction.isChatInputCommand()) {
 
     const mode = interaction.options.getString("mode");
@@ -260,7 +260,6 @@ client.on("interactionCreate", async (interaction) => {
 
   if (!isEnabled()) return;
 
-  // ===== SELECT =====
   if (interaction.isStringSelectMenu()) {
 
     const cat = categories.find(c => c.value === interaction.values[0]);
@@ -317,13 +316,15 @@ ${gamesText}
     });
   }
 
-  // ===== CLOSE =====
+  // ===== CLOSE BUTTON (UPDATED PART) =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
 
       const member = interaction.member;
       const data = await generateTranscript(interaction.channel, interaction.user);
+
+      const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
       const embed = new EmbedBuilder()
         .setTitle("📄 Auto-Generated Transcript")
@@ -339,15 +340,16 @@ ${gamesText}
         )
         .setColor(0x5865f2);
 
-      await interaction.reply({
+      // ✅ SEND TO YOUR TRANSCRIPT CHANNEL
+      await transcriptChannel.send({
         embeds: [embed],
         files: [data.fileName],
       });
 
-      await interaction.user.send({
-        content: "📄 Your transcript:",
-        files: [data.fileName],
-      }).catch(() => {});
+      await interaction.reply({
+        content: "🔒 Ticket closed. Transcript saved.",
+        ephemeral: true,
+      });
 
       await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
