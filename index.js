@@ -70,8 +70,12 @@ const categories = [
 // ================= FILE HELPERS =================
 
 function load(file) {
-  if (!fs.existsSync(file)) return {};
-  return JSON.parse(fs.readFileSync(file));
+  try {
+    if (!fs.existsSync(file)) return {};
+    return JSON.parse(fs.readFileSync(file));
+  } catch {
+    return {};
+  }
 }
 
 function save(file, data) {
@@ -124,7 +128,7 @@ client.once("ready", async () => {
   await deployCommands();
 });
 
-// ================= PANEL EMBED (EXACT ONE YOU WANTED) =================
+// ================= PANEL EMBED =================
 
 function buildPanelEmbed() {
   return new EmbedBuilder()
@@ -193,19 +197,15 @@ client.on("interactionCreate", async (interaction) => {
 
         const row = new ActionRowBuilder().addComponents(menu);
 
-        const msg = await interaction.channel.send({
+        await interaction.channel.send({
           embeds: [embed],
           components: [row],
         });
 
-        await interaction.reply({
+        return interaction.reply({
           content: "✅ Panel sent",
           ephemeral: true,
         });
-
-        setTimeout(() => {
-          interaction.deleteReply().catch(() => {});
-        }, 3000);
       }
     }
   }
@@ -276,28 +276,41 @@ ${gamesText}
     }
   }
 
-  // ===== CLOSE BUTTON =====
+  // ===== CLOSE BUTTON (FIXED + SAFE) =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
+      try {
+        const cooldowns = load(cooldownFile);
 
-      const cooldowns = load(cooldownFile);
+        cooldowns[interaction.user.id] = Date.now();
+        save(cooldownFile, cooldowns);
 
-      cooldowns[interaction.user.id] = Date.now();
-      save(cooldownFile, cooldowns);
+        const member = interaction.member;
 
-      const member = interaction.member;
-      await member.roles.add(COOLDOWN_ROLE_ID);
+        if (member?.roles) {
+          await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+        }
 
-      setTimeout(() => {
-        member.roles.remove(COOLDOWN_ROLE_ID);
-      }, 48 * 60 * 60 * 1000);
+        await interaction.reply({
+          content: "🔒 Ticket closing...",
+          ephemeral: true,
+        });
 
-      await interaction.reply("🔒 Ticket closed.");
+        setTimeout(() => {
+          interaction.channel.delete().catch(() => {});
+        }, 2500);
 
-      setTimeout(() => {
-        interaction.channel.delete().catch(() => {});
-      }, 3000);
+      } catch (err) {
+        console.log("Close error:", err);
+
+        if (!interaction.replied) {
+          await interaction.reply({
+            content: "❌ Failed to close ticket.",
+            ephemeral: true,
+          }).catch(() => {});
+        }
+      }
     }
   }
 });
