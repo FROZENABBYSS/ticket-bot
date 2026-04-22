@@ -1,10 +1,9 @@
 // Discord Ticket Bot (discord.js v14)
-// Features:
-// - Dropdown ticket categories (A-Z vault style)
-// - Token pricing system
-// - Ticket creation system
-// - 48h cooldown after closing ticket
-// - Role reward after ticket close
+// FIXED VERSION:
+// - Proper Slash Commands (/panel, /close)
+// - Auto command registration (REST)
+// - Fixed interaction system
+// - Stable deployment for Railway
 
 const {
   Client,
@@ -15,31 +14,32 @@ const {
   StringSelectMenuBuilder,
   PermissionsBitField,
   ChannelType,
+  REST,
+  Routes,
 } = require("discord.js");
 
 const fs = require("fs");
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
+
+const COOLDOWN_ROLE_ID = "1490210219702091986";
+
+const cooldownFile = "cooldowns.json";
+const keysFile = "keys.json";
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Channel],
 });
 
-// ================= CONFIG =================
-
-const TOKEN = process.env.TOKEN;
-
-// role given after ticket close (limited role)
-const COOLDOWN_ROLE_ID = "1490210219702091986";
-
-// cooldown tracking file
-const cooldownFile = "cooldowns.json";
-const keysFile = "keys.json";
-
-// ================= DATA =================
+// ================= CATEGORIES =================
 
 const categories = [
   {
@@ -70,69 +70,103 @@ const categories = [
   },
 ];
 
-// ================= HELPERS =================
+// ================= FILE HELPERS =================
 
-function loadCooldowns() {
-  if (!fs.existsSync(cooldownFile)) return {};
-  return JSON.parse(fs.readFileSync(cooldownFile));
+function load(file) {
+  if (!fs.existsSync(file)) return {};
+  return JSON.parse(fs.readFileSync(file));
 }
 
-function saveCooldowns(data) {
-  fs.writeFileSync(cooldownFile, JSON.stringify(data, null, 2));
+function save(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-function loadKeys() {
-  if (!fs.existsSync(keysFile)) return {};
-  return JSON.parse(fs.readFileSync(keysFile));
+// ================= SLASH COMMANDS =================
+
+const commands = [
+  {
+    name: "panel",
+    description: "Open ticket panel",
+  },
+  {
+    name: "close",
+    description: "Close ticket",
+  },
+];
+
+async function deployCommands() {
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
+  console.log("Slash commands registered.");
 }
 
-function saveKeys(data) {
-  fs.writeFileSync(keysFile, JSON.stringify(data, null, 2));
-}
+// ================= READY =================
 
-// ================= BOT READY =================
-
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-});
-
-// ================= TICKET PANEL =================
-
-client.on("messageCreate", async (message) => {
-  if (message.content === "/panel") {
-
-    const embed = new EmbedBuilder()
-      .setTitle("🎮 Game Vault Ticket System")
-      .setDescription("Select a category to open a ticket and claim your game.")
-      .setColor(0x6a0dad);
-
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("game_select")
-      .setPlaceholder("Select a Vault Category")
-      .addOptions(
-        categories.map((c) => ({
-          label: c.label,
-          value: c.value,
-          emoji: c.emoji,
-        }))
-      );
-
-    const row = new ActionRowBuilder().addComponents(menu);
-
-    await message.channel.send({ embeds: [embed], components: [row] });
-  }
+  await deployCommands();
 });
 
 // ================= INTERACTIONS =================
 
 client.on("interactionCreate", async (interaction) => {
 
-  // dropdown
+  // /panel command
+  if (interaction.isChatInputCommand()) {
+
+    if (interaction.commandName === "panel") {
+
+      const embed = new EmbedBuilder()
+        .setTitle("🎮 Game Vault Ticket System")
+        .setDescription("Select a category to open a ticket.")
+        .setColor(0x6a0dad);
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId("game_select")
+        .setPlaceholder("Select Vault Category")
+        .addOptions(
+          categories.map((c) => ({
+            label: c.label,
+            value: c.value,
+            emoji: c.emoji,
+          }))
+        );
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      return interaction.reply({ embeds: [embed], components: [row] });
+    }
+
+    // /close command
+    if (interaction.commandName === "close") {
+
+      const cooldowns = load(cooldownFile);
+
+      cooldowns[interaction.user.id] = Date.now();
+      save(cooldownFile, cooldowns);
+
+      const member = interaction.member;
+      await member.roles.add(COOLDOWN_ROLE_ID);
+
+      setTimeout(() => {
+        member.roles.remove(COOLDOWN_ROLE_ID);
+      }, 48 * 60 * 60 * 1000);
+
+      return interaction.reply("🔒 Ticket closed + 48h cooldown applied.");
+    }
+  }
+
+  // dropdown category
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "game_select") {
 
-      const selected = categories.find(c => c.value === interaction.values[0]);
+      const selected = categories.find(
+        (c) => c.value === interaction.values[0]
+      );
 
       const channel = await interaction.guild.channels.create({
         name: `ticket-${interaction.user.username}`,
@@ -144,80 +178,66 @@ client.on("interactionCreate", async (interaction) => {
           },
           {
             id: interaction.user.id,
-            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+            ],
           },
         ],
       });
 
       const embed = new EmbedBuilder()
         .setTitle("🎫 Ticket Opened")
-        .setDescription(`Category: **${selected.label}**\nChoose your game below.`)
+        .setDescription(`Category: **${selected.label}**`)
         .setColor(0x00ffcc);
 
-      const gameMenu = new StringSelectMenuBuilder()
+      const menu = new StringSelectMenuBuilder()
         .setCustomId("game_choice")
         .setPlaceholder("Select Game")
         .addOptions(
-          selected.games.map(g => ({
+          selected.games.map((g) => ({
             label: `${g.name} - ${g.tokens} Tokens`,
             value: g.name,
           }))
         );
 
-      const row = new ActionRowBuilder().addComponents(gameMenu);
+      const row = new ActionRowBuilder().addComponents(menu);
 
       await channel.send({ embeds: [embed], components: [row] });
 
-      await interaction.reply({ content: `Ticket created: ${channel}`, ephemeral: true });
+      return interaction.reply({
+        content: `Ticket created: ${channel}`,
+        ephemeral: true,
+      });
     }
 
     // game selection
     if (interaction.customId === "game_choice") {
 
-      const gameName = interaction.values[0];
-      const keys = loadKeys();
-
-      const cooldowns = loadCooldowns();
+      const keys = load(keysFile);
+      const cooldowns = load(cooldownFile);
 
       if (cooldowns[interaction.user.id]) {
         const diff = Date.now() - cooldowns[interaction.user.id];
-        const days = 48 * 60 * 60 * 1000;
+        const limit = 48 * 60 * 60 * 1000;
 
-        if (diff < days) {
-          return interaction.reply({ content: "⏳ You are on a 48h cooldown.", ephemeral: true });
+        if (diff < limit) {
+          return interaction.reply({
+            content: "⏳ You are on a 48h cooldown.",
+            ephemeral: true,
+          });
         }
       }
 
       keys[interaction.user.id] = keys[interaction.user.id] || [];
-      keys[interaction.user.id].push(gameName);
+      keys[interaction.user.id].push(interaction.values[0]);
 
-      saveKeys(keys);
+      save(keysFile, keys);
 
-      await interaction.reply({
-        content: `✅ You claimed **${gameName}**! Staff will process it soon.`,
+      return interaction.reply({
+        content: `✅ You claimed **${interaction.values[0]}**`,
         ephemeral: true,
       });
-    }
-  }
-
-  // close ticket system
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "close") {
-
-      const userId = interaction.user.id;
-      const cooldowns = loadCooldowns();
-
-      cooldowns[userId] = Date.now();
-      saveCooldowns(cooldowns);
-
-      const member = interaction.member;
-      await member.roles.add(COOLDOWN_ROLE_ID);
-
-      setTimeout(() => {
-        member.roles.remove(COOLDOWN_ROLE_ID);
-      }, 48 * 60 * 60 * 1000);
-
-      await interaction.reply("🔒 Ticket closed + cooldown applied (48h)");
     }
   }
 });
