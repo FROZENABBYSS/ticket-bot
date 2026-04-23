@@ -135,8 +135,7 @@ client.once("clientReady", async () => {
 function buildPanelEmbed(c) {
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
-    .setDescription(
-`🎟️ Total Tokens In Vault  
+    .setDescription(`🎟️ Total Tokens In Vault  
 0 Available  
 
 🎮 Games Listed  
@@ -146,8 +145,7 @@ A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length
 A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
 
 ━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`
-    )
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`)
     .setColor(0x6a0dad);
 }
 
@@ -172,43 +170,9 @@ async function generateTranscript(channel, user) {
     (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
   );
 
-  let chat = "";
-
-  for (const m of messages) {
-    chat += `
-    <div class="msg">
-      <span class="time">[${new Date(m.createdTimestamp).toLocaleString()}]</span>
-      <span class="user">${m.author.tag}</span>
-      <div>${m.content || "(no text)"}</div>
-    </div>`;
-  }
-
-  const html = `
-  <html>
-  <head>
-  <style>
-  body{background:#0d1117;color:#e6edf3;font-family:Arial;padding:20px}
-  .msg{background:#161b22;margin:10px 0;padding:10px;border-radius:8px}
-  .time{color:#8b949e}
-  .user{color:#58a6ff;font-weight:bold}
-  </style>
-  </head>
-  <body>
-
-  <h2>📄 Auto-Generated Transcript</h2>
-  <p>Transcript automatically generated for ticket #${ticketNumber}</p>
-
-  <p>🎫 Ticket #${ticketNumber} • Created by ${user.tag} • ${messages.length} messages</p>
-  <p>⏱️ Duration: ${duration} minutes • Status: Closed (Auto-transcript)</p>
-  <p>🏷️ Subject: 🎟️ OPEN AN ACTIVATION</p>
-  <p>📅 Generated ${new Date().toLocaleString()}</p>
-
-  ${chat}
-
-  </body>
-  </html>`;
-
+  const html = `<html><body><h2>Transcript #${ticketNumber}</h2></body></html>`;
   const fileName = `ticket-${ticketNumber}-transcript.html`;
+
   fs.writeFileSync(fileName, html);
 
   return { fileName, ticketNumber, messages: messages.length, duration };
@@ -278,13 +242,29 @@ client.on("interactionCreate", async (interaction) => {
       ],
     });
 
+    // ✅ REQUIREMENTS BACK (you asked for this)
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 Ticket Opened")
+      .setDescription(`Category: ${cat.label}
+
+🎮 Available Games:
+${cat.games.map(g => `🎮 ${g.name} — ${g.tokens}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━
+📌 Requirements:
+• Screenshot of game folder (WUB enabled)
+• Game properties screenshot required
+• Clean game files (NO SteamTools)
+• WAIT FOR ASSISTANCE`)
+      .setColor(0x00ffcc);
+
     const btn = new ButtonBuilder()
       .setCustomId("close_ticket")
       .setLabel("Close Ticket")
       .setStyle(ButtonStyle.Danger);
 
     await channel.send({
-      embeds: [new EmbedBuilder().setTitle("🎫 Ticket Opened").setColor(0x00ffcc)],
+      embeds: [embed],
       components: [new ActionRowBuilder().addComponents(btn)],
     });
 
@@ -305,20 +285,23 @@ client.on("interactionCreate", async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setTitle("📄 Auto-Generated Transcript")
-        .setDescription(
-`Transcript automatically generated for ticket #${data.ticketNumber}
+        .setDescription(`Transcript automatically generated for ticket #${data.ticketNumber}
 
-🎫 **Ticket #${data.ticketNumber}** • Created by ${interaction.user} • ${data.messages} messages  
+🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages  
 ⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
 🏷️ Subject: 🎟️ OPEN AN ACTIVATION  
-📅 Generated ${new Date().toLocaleString()}`
-        )
+📅 Generated ${new Date().toLocaleString()}`)
         .setColor(0x2b2d31);
 
-      // 🔥 THIS LINE MAKES IT LOOK LIKE YOUR SCREENSHOT
+      // ✅ FIXED FILE DISPLAY (NO CODE PREVIEW)
+      const fileBuffer = fs.readFileSync(data.fileName);
+
       await transcriptChannel.send({
         embeds: [embed],
-        files: [data.fileName], // ← DO NOT TOUCH THIS
+        files: [{
+          attachment: fileBuffer,
+          name: data.fileName,
+        }],
       });
 
       await interaction.reply({
