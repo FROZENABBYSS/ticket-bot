@@ -91,7 +91,7 @@ function isEnabled() {
   return data.enabled !== false;
 }
 
-// ================= SLASH COMMAND =================
+// ================= SLASH =================
 
 const commands = [
   {
@@ -100,7 +100,7 @@ const commands = [
     options: [
       {
         name: "mode",
-        description: "enable / disable / send", // ✅ FIXED (IMPORTANT)
+        description: "enable / disable / send",
         type: 3,
         required: true,
         choices: [
@@ -146,8 +146,7 @@ A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length
 A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
 
 ━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low (≤10) • 🔴 Empty  
-• Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`
     )
     .setColor(0x6a0dad);
 }
@@ -222,7 +221,6 @@ client.on("interactionCreate", async (interaction) => {
   const categories = getCategories();
 
   if (interaction.isChatInputCommand()) {
-
     const mode = interaction.options.getString("mode");
     const sys = load(systemFile);
 
@@ -239,7 +237,6 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (mode === "send") {
-
       const embed = buildPanelEmbed(categories);
 
       const menu = new StringSelectMenuBuilder()
@@ -294,9 +291,9 @@ ${gamesText}
 
 ━━━━━━━━━━━━━━━━━━
 📌 Requirements:
-• Screenshot of game folder (WUB enabled)
-• Game properties screenshot required
-• Clean game files (NO SteamTools)
+• Screenshot of game folder
+• Game properties screenshot
+• Clean files
 • WAIT FOR ASSISTANCE`
       )
       .setColor(0x00ffcc);
@@ -317,6 +314,7 @@ ${gamesText}
     });
   }
 
+  // ===== CLOSE =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
@@ -327,25 +325,25 @@ ${gamesText}
 
         const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
+        // 🔥 THIS IS THE EXACT STYLE MATCH
         const embed = new EmbedBuilder()
           .setTitle("📄 Auto-Generated Transcript")
           .setDescription(
 `Transcript automatically generated for ticket #${data.ticketNumber}
 
-🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages
-⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)
-🏷️ Subject: 🎟️ OPEN AN ACTIVATION
-📅 Generated ${new Date().toLocaleString()}
-
-📎 Attachment file type: webcode
-\`${data.fileName}\`
-${(Math.random() * 30 + 10).toFixed(2)} KB`
+🎫 **Ticket #${data.ticketNumber}** • Created by ${interaction.user} • ${data.messages} messages  
+⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
+🏷️ Subject: 🎟️ OPEN AN ACTIVATION  
+📅 Generated ${new Date().toLocaleString()}`
           )
           .setColor(0x2b2d31);
 
         await transcriptChannel.send({
           embeds: [embed],
-          files: [data.fileName],
+          files: [{
+            attachment: data.fileName,
+            name: data.fileName
+          }],
         });
 
         await interaction.reply({
@@ -364,7 +362,7 @@ ${(Math.random() * 30 + 10).toFixed(2)} KB`
         }, 4000);
 
       } catch (err) {
-        console.log("Close error:", err);
+        console.log(err);
       }
     }
   }
