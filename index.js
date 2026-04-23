@@ -115,11 +115,9 @@ const commands = [
 
 async function deployCommands() {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
-
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
     body: commands,
   });
-
   console.log("Commands deployed");
 }
 
@@ -170,10 +168,24 @@ async function generateTranscript(channel, user) {
     (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
   );
 
-  const html = `<html><body><h2>Transcript #${ticketNumber}</h2></body></html>`;
-  const fileName = `ticket-${ticketNumber}-transcript.html`;
+  // ✅ CLEAN TEXT TRANSCRIPT (NO HTML = NO PREVIEW)
+  let content = `📄 Auto-Generated Transcript
 
-  fs.writeFileSync(fileName, html);
+Ticket #${ticketNumber}
+Created by: ${user.tag}
+Messages: ${messages.length}
+Duration: ${duration} minutes
+
+━━━━━━━━━━━━━━━━━━
+
+`;
+
+  for (const m of messages) {
+    content += `[${new Date(m.createdTimestamp).toLocaleString()}] ${m.author.tag}: ${m.content || "(no text)"}\n`;
+  }
+
+  const fileName = `ticket-${ticketNumber}-transcript.txt`;
+  fs.writeFileSync(fileName, content);
 
   return { fileName, ticketNumber, messages: messages.length, duration };
 }
@@ -242,7 +254,6 @@ client.on("interactionCreate", async (interaction) => {
       ],
     });
 
-    // ✅ REQUIREMENTS BACK (you asked for this)
     const embed = new EmbedBuilder()
       .setTitle("🎫 Ticket Opened")
       .setDescription(`Category: ${cat.label}
@@ -293,15 +304,9 @@ ${cat.games.map(g => `🎮 ${g.name} — ${g.tokens}`).join("\n")}
 📅 Generated ${new Date().toLocaleString()}`)
         .setColor(0x2b2d31);
 
-      // ✅ FIXED FILE DISPLAY (NO CODE PREVIEW)
-      const fileBuffer = fs.readFileSync(data.fileName);
-
       await transcriptChannel.send({
         embeds: [embed],
-        files: [{
-          attachment: fileBuffer,
-          name: data.fileName,
-        }],
+        files: [data.fileName], // ✅ CLEAN FILE BOX LIKE YOUR SCREENSHOT
       });
 
       await interaction.reply({
