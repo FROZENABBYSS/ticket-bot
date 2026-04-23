@@ -25,6 +25,9 @@ const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
 
+// 🔥 YOUR ACTIVATOR ROLE
+const ACTIVATOR_ROLE_ID = "1490945882667876402";
+
 const systemFile = "system.json";
 
 // ================= CLIENT =================
@@ -134,12 +137,12 @@ function buildPanelEmbed(c) {
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
     .setDescription(
-`Select A Game From The Dropdown Below To Activate.
+`🎯 Select A Game From The Dropdown Below To Activate.
 
 🎟️ Total Tokens In Vault  
 0 Available  
 
-🎮 Games Listed  
+🕹️ Games Listed  
 A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
 
 🔥 High Demand  
@@ -147,7 +150,7 @@ A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.len
 
 ━━━━━━━━━━━━━━━━━━
 🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
-• Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
     )
     .setColor(0x6a0dad);
 }
@@ -278,7 +281,9 @@ ${cat.games.map(g => `🎮 ${g.name} — ${g.tokens}`).join("\n")}
       .setLabel("Close Ticket")
       .setStyle(ButtonStyle.Danger);
 
+    // 🔥 ROLE PING ABOVE EMBED
     await channel.send({
+      content: `<@&${ACTIVATOR_ROLE_ID}> , WE NEED ASSISTANCE HERE`,
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(btn)],
     });
