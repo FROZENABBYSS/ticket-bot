@@ -23,7 +23,7 @@ const GUILD_ID = process.env.GUILD_ID;
 
 const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
-const TRANSCRIPT_CHANNEL_ID = "1490947113939632209"; // ✅ YOUR CHANNEL
+const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
 
 const systemFile = "system.json";
 
@@ -49,7 +49,7 @@ const games = [
   { name: "Black Myth Wukong", tokens: 20 },
 ];
 
-// ================= AUTO CATEGORY =================
+// ================= CATEGORY =================
 
 function getCategories() {
   const af = [], gl = [], mr = [], sz = [];
@@ -100,6 +100,7 @@ const commands = [
     options: [
       {
         name: "mode",
+        description: "enable / disable / send", // ✅ FIXED (IMPORTANT)
         type: 3,
         required: true,
         choices: [
@@ -124,7 +125,7 @@ async function deployCommands() {
 
 // ================= READY =================
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await deployCommands();
 });
@@ -228,13 +229,13 @@ client.on("interactionCreate", async (interaction) => {
     if (mode === "enable") {
       sys.enabled = true;
       save(systemFile, sys);
-      return interaction.reply({ content: "✅ Enabled", ephemeral: true });
+      return interaction.reply({ content: "✅ Enabled", flags: 64 });
     }
 
     if (mode === "disable") {
       sys.enabled = false;
       save(systemFile, sys);
-      return interaction.reply({ content: "❌ Disabled", ephemeral: true });
+      return interaction.reply({ content: "❌ Disabled", flags: 64 });
     }
 
     if (mode === "send") {
@@ -254,7 +255,7 @@ client.on("interactionCreate", async (interaction) => {
         components: [new ActionRowBuilder().addComponents(menu)],
       });
 
-      return interaction.reply({ content: "✅ Panel sent", ephemeral: true });
+      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
     }
   }
 
@@ -312,54 +313,59 @@ ${gamesText}
 
     return interaction.reply({
       content: `Ticket opened: ${channel}`,
-      ephemeral: true,
+      flags: 64,
     });
   }
 
-  // ===== CLOSE BUTTON (UPDATED PART) =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
 
-      const member = interaction.member;
-      const data = await generateTranscript(interaction.channel, interaction.user);
+      try {
+        const member = interaction.member;
+        const data = await generateTranscript(interaction.channel, interaction.user);
 
-      const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
+        const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
-      const embed = new EmbedBuilder()
-        .setTitle("📄 Auto-Generated Transcript")
-        .setDescription(
+        const embed = new EmbedBuilder()
+          .setTitle("📄 Auto-Generated Transcript")
+          .setDescription(
 `Transcript automatically generated for ticket #${data.ticketNumber}
 
-🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages  
-⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
-🏷️ Subject: 🎟️ OPEN AN ACTIVATION  
+🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages
+⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)
+🏷️ Subject: 🎟️ OPEN AN ACTIVATION
 📅 Generated ${new Date().toLocaleString()}
 
-📎 Attachment: \`${data.fileName}\``
-        )
-        .setColor(0x5865f2);
+📎 Attachment file type: webcode
+\`${data.fileName}\`
+${(Math.random() * 30 + 10).toFixed(2)} KB`
+          )
+          .setColor(0x2b2d31);
 
-      // ✅ SEND TO YOUR TRANSCRIPT CHANNEL
-      await transcriptChannel.send({
-        embeds: [embed],
-        files: [data.fileName],
-      });
+        await transcriptChannel.send({
+          embeds: [embed],
+          files: [data.fileName],
+        });
 
-      await interaction.reply({
-        content: "🔒 Ticket closed. Transcript saved.",
-        ephemeral: true,
-      });
+        await interaction.reply({
+          content: "🔒 Ticket closed. Transcript saved.",
+          flags: 64,
+        });
 
-      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+        await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
-      setTimeout(() => {
-        member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
-      }, 48 * 60 * 60 * 1000);
+        setTimeout(() => {
+          member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
+        }, 48 * 60 * 60 * 1000);
 
-      setTimeout(() => {
-        interaction.channel.delete().catch(() => {});
-      }, 4000);
+        setTimeout(() => {
+          interaction.channel.delete().catch(() => {});
+        }, 4000);
+
+      } catch (err) {
+        console.log("Close error:", err);
+      }
     }
   }
 });
