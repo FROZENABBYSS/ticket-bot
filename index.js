@@ -278,33 +278,13 @@ client.on("interactionCreate", async (interaction) => {
       ],
     });
 
-    const gamesText = cat.games.map(g =>
-      `🎮 ${g.name} — ${g.tokens} Tokens`).join("\n");
-
-    const embed = new EmbedBuilder()
-      .setTitle("🎫 Ticket Opened")
-      .setDescription(
-`Category: ${cat.label}
-
-🎮 Available Games:
-${gamesText}
-
-━━━━━━━━━━━━━━━━━━
-📌 Requirements:
-• Screenshot of game folder
-• Game properties screenshot
-• Clean files
-• WAIT FOR ASSISTANCE`
-      )
-      .setColor(0x00ffcc);
-
     const btn = new ButtonBuilder()
       .setCustomId("close_ticket")
       .setLabel("Close Ticket")
       .setStyle(ButtonStyle.Danger);
 
     await channel.send({
-      embeds: [embed],
+      embeds: [new EmbedBuilder().setTitle("🎫 Ticket Opened").setColor(0x00ffcc)],
       components: [new ActionRowBuilder().addComponents(btn)],
     });
 
@@ -319,51 +299,42 @@ ${gamesText}
 
     if (interaction.customId === "close_ticket") {
 
-      try {
-        const member = interaction.member;
-        const data = await generateTranscript(interaction.channel, interaction.user);
+      const member = interaction.member;
+      const data = await generateTranscript(interaction.channel, interaction.user);
+      const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
-        const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
-
-        // 🔥 THIS IS THE EXACT STYLE MATCH
-        const embed = new EmbedBuilder()
-          .setTitle("📄 Auto-Generated Transcript")
-          .setDescription(
+      const embed = new EmbedBuilder()
+        .setTitle("📄 Auto-Generated Transcript")
+        .setDescription(
 `Transcript automatically generated for ticket #${data.ticketNumber}
 
 🎫 **Ticket #${data.ticketNumber}** • Created by ${interaction.user} • ${data.messages} messages  
 ⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
 🏷️ Subject: 🎟️ OPEN AN ACTIVATION  
 📅 Generated ${new Date().toLocaleString()}`
-          )
-          .setColor(0x2b2d31);
+        )
+        .setColor(0x2b2d31);
 
-        await transcriptChannel.send({
-          embeds: [embed],
-          files: [{
-            attachment: data.fileName,
-            name: data.fileName
-          }],
-        });
+      // 🔥 THIS LINE MAKES IT LOOK LIKE YOUR SCREENSHOT
+      await transcriptChannel.send({
+        embeds: [embed],
+        files: [data.fileName], // ← DO NOT TOUCH THIS
+      });
 
-        await interaction.reply({
-          content: "🔒 Ticket closed. Transcript saved.",
-          flags: 64,
-        });
+      await interaction.reply({
+        content: "🔒 Ticket closed. Transcript saved.",
+        flags: 64,
+      });
 
-        await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
-        setTimeout(() => {
-          member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
-        }, 48 * 60 * 60 * 1000);
+      setTimeout(() => {
+        member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
+      }, 48 * 60 * 60 * 1000);
 
-        setTimeout(() => {
-          interaction.channel.delete().catch(() => {});
-        }, 4000);
-
-      } catch (err) {
-        console.log(err);
-      }
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 4000);
     }
   }
 });
