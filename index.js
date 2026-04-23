@@ -133,7 +133,10 @@ client.once("clientReady", async () => {
 function buildPanelEmbed(c) {
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
-    .setDescription(`🎟️ Total Tokens In Vault  
+    .setDescription(
+`Select A Game From The Dropdown Below To Activate.
+
+🎟️ Total Tokens In Vault  
 0 Available  
 
 🎮 Games Listed  
@@ -143,7 +146,9 @@ A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length
 A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
 
 ━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty`)
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
+• Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+    )
     .setColor(0x6a0dad);
 }
 
@@ -168,7 +173,6 @@ async function generateTranscript(channel, user) {
     (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
   );
 
-  // ✅ CLEAN TEXT TRANSCRIPT (NO HTML = NO PREVIEW)
   let content = `📄 Auto-Generated Transcript
 
 Ticket #${ticketNumber}
@@ -285,7 +289,6 @@ ${cat.games.map(g => `🎮 ${g.name} — ${g.tokens}`).join("\n")}
     });
   }
 
-  // ===== CLOSE =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
@@ -300,13 +303,13 @@ ${cat.games.map(g => `🎮 ${g.name} — ${g.tokens}`).join("\n")}
 
 🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages  
 ⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
-🏷️ Subject: 🎟️ OPEN AN ACTIVATION  
+🏷️ Subject: 🎟️ ACTIVATION  
 📅 Generated ${new Date().toLocaleString()}`)
         .setColor(0x2b2d31);
 
       await transcriptChannel.send({
         embeds: [embed],
-        files: [data.fileName], // ✅ CLEAN FILE BOX LIKE YOUR SCREENSHOT
+        files: [data.fileName],
       });
 
       await interaction.reply({
