@@ -24,7 +24,6 @@ const GUILD_ID = process.env.GUILD_ID;
 const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
-
 const ACTIVATOR_ROLE_ID = "1490945882667876402";
 
 const systemFile = "system.json";
@@ -51,7 +50,6 @@ const games = [
   { name: "Black Myth Wukong", tokens: 20 },
 ];
 
-// 🔥 GAME EMOJIS (NEW)
 const gameEmojis = {
   "Hogwarts Legacy": "🪄",
   "Hinokami Chronicles 2": "🔥",
@@ -102,6 +100,14 @@ function isEnabled() {
   return data.enabled !== false;
 }
 
+// ================= CHECK EXISTING TICKET =================
+
+async function existingTicket(guild, userId) {
+  return guild.channels.cache.find(
+    (c) => c.name === `ticket-${userId}`
+  );
+}
+
 // ================= SLASH =================
 
 const commands = [
@@ -134,7 +140,7 @@ async function deployCommands() {
 
 // ================= READY =================
 
-client.once("clientReady", async () => {
+client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await deployCommands();
 });
@@ -142,8 +148,6 @@ client.once("clientReady", async () => {
 // ================= PANEL =================
 
 function buildPanelEmbed(c) {
-
-  // 🔥 CALCULATE TOTAL TOKENS (NEW)
   const totalTokens = games.reduce((sum, g) => sum + g.tokens, 0);
 
   return new EmbedBuilder()
@@ -157,12 +161,8 @@ ${totalTokens} Available
 🕹️ Games Listed  
 A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
 
-🔥 High Demand  
-A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
-
 ━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
-💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+💠 Steam Token Vault System`
     )
     .setColor(0x6a0dad);
 }
@@ -183,17 +183,13 @@ async function generateTranscript(channel, user) {
 
   messages.reverse();
 
-  const ticketNumber = Math.floor(Math.random() * 1000);
-  const duration = Math.floor(
-    (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
-  );
+  const ticketNumber = Math.floor(Math.random() * 10000);
 
   let content = `📄 Auto-Generated Transcript
 
 Ticket #${ticketNumber}
 Created by: ${user.tag}
 Messages: ${messages.length}
-Duration: ${duration} minutes
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -206,7 +202,7 @@ Duration: ${duration} minutes
   const fileName = `ticket-${ticketNumber}-transcript.txt`;
   fs.writeFileSync(fileName, content);
 
-  return { fileName, ticketNumber, messages: messages.length, duration };
+  return { fileName, ticketNumber, messages: messages.length };
 }
 
 // ================= INTERACTIONS =================
@@ -222,13 +218,13 @@ client.on("interactionCreate", async (interaction) => {
     if (mode === "enable") {
       sys.enabled = true;
       save(systemFile, sys);
-      return interaction.reply({ content: "✅ Enabled", flags: 64 });
+      return interaction.reply({ content: "✅ Enabled", ephemeral: true });
     }
 
     if (mode === "disable") {
       sys.enabled = false;
       save(systemFile, sys);
-      return interaction.reply({ content: "❌ Disabled", flags: 64 });
+      return interaction.reply({ content: "❌ Disabled", ephemeral: true });
     }
 
     if (mode === "send") {
@@ -247,7 +243,7 @@ client.on("interactionCreate", async (interaction) => {
         components: [new ActionRowBuilder().addComponents(menu)],
       });
 
-      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
+      return interaction.reply({ content: "✅ Panel sent", ephemeral: true });
     }
   }
 
@@ -255,37 +251,59 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isStringSelectMenu()) {
 
+    const guild = interaction.guild;
+
+    // ❌ FIX: STOP TICKET SPAM
+    const existing = await existingTicket(guild, interaction.user.id);
+    if (existing) {
+      return interaction.reply({
+        content: "⚠️ You already have an open ticket.",
+        ephemeral: true,
+      });
+    }
+
     const cat = categories.find(c => c.value === interaction.values[0]);
 
     const channel = await interaction.guild.channels.create({
-      name: `ticket-${interaction.user.username}`,
+      name: `ticket-${interaction.user.id}`,
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
+
+      // ✅ FIX: VISIBILITY ISSUE
       permissionOverwrites: [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        {
+          id: guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel],
+        },
         {
           id: interaction.user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages,
-          ],
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+        },
+        {
+          id: ACTIVATOR_ROLE_ID,
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
         },
       ],
     });
 
     const embed = new EmbedBuilder()
-      .setTitle("🎫 Ticket Opened")
-      .setDescription(`Category: ${cat.label}
+      .setTitle("----- SELF ACTIVATIONS - DNVO ACTIVATION")
+      .setDescription(
+`👋 Welcome ${interaction.user}
 
-🎮 Available Games:
-${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
+Please provide the requested information within 20 minutes, otherwise the ticket may be automatically closed.
 
 ━━━━━━━━━━━━━━━━━━
-📌 Requirements:
-• Screenshot of game folder (WUB enabled)
-• Game properties screenshot required
-• Clean game files (NO SteamTools)
-• WAIT FOR ASSISTANCE`)
+
+📂 Category: ${cat.label}
+
+━━━━━━━━━━━━━━━━━━
+
+🎮 Available Games:
+A-F | G-L | M-R | S-Z
+
+━━━━━━━━━━━━━━━━━━`
+      )
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
@@ -294,14 +312,14 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
       .setStyle(ButtonStyle.Danger);
 
     await channel.send({
-      content: `<@&${ACTIVATOR_ROLE_ID}> , WE NEED ASSISTANCE HERE`,
+      content: `<@&${ACTIVATOR_ROLE_ID}> WE NEED ASSISTANCE HERE`,
       embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(btn)],
+      components: [new ActionRowActionBuilder().addComponents(btn)],
     });
 
     return interaction.reply({
       content: `Ticket opened: ${channel}`,
-      flags: 64,
+      ephemeral: true,
     });
   }
 
@@ -310,17 +328,18 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
     if (interaction.customId === "close_ticket") {
 
       const member = interaction.member;
+
       const data = await generateTranscript(interaction.channel, interaction.user);
+
       const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
       const embed = new EmbedBuilder()
         .setTitle("📄 Auto-Generated Transcript")
-        .setDescription(`Transcript automatically generated for ticket #${data.ticketNumber}
-
-🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages  
-⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
-🏷️ Subject: 🎟️ ACTIVATION  
-📅 Generated ${new Date().toLocaleString()}`)
+        .setDescription(
+`Ticket #${data.ticketNumber}
+Messages: ${data.messages}
+Status: Closed`
+        )
         .setColor(0x2b2d31);
 
       await transcriptChannel.send({
@@ -328,15 +347,14 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
         files: [data.fileName],
       });
 
-      await interaction.reply({
-        content: "🔒 Ticket closed. Transcript saved.",
-        flags: 64,
-      });
-
       await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
-      setTimeout(() => {
-        member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
+      // ✅ FIX: RELIABLE ROLE REMOVAL
+      setTimeout(async () => {
+        try {
+          const freshMember = await interaction.guild.members.fetch(member.id);
+          await freshMember.roles.remove(COOLDOWN_ROLE_ID);
+        } catch {}
       }, 48 * 60 * 60 * 1000);
 
       setTimeout(() => {
