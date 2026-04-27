@@ -30,6 +30,19 @@ const COOLDOWN_ROLE_ID = "1490210219702091986";
 const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
 const ACTIVATOR_ROLE_ID = "1490945882667876402";
 
+const systemFile = "system.json";
+
+// ================= SYSTEM =================
+
+function loadSystem() {
+  if (!fs.existsSync(systemFile)) return { enabled: true };
+  return JSON.parse(fs.readFileSync(systemFile));
+}
+
+function saveSystem(data) {
+  fs.writeFileSync(systemFile, JSON.stringify(data, null, 2));
+}
+
 // ================= CLIENT =================
 
 const client = new Client({
@@ -113,7 +126,19 @@ A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.len
 const commands = [
   {
     name: "panel",
-    description: "Send the activation panel",
+    description: "Send or control panel",
+    options: [
+      {
+        name: "mode",
+        type: 3,
+        required: true,
+        choices: [
+          { name: "send", value: "send" },
+          { name: "enable", value: "enable" },
+          { name: "disable", value: "disable" },
+        ],
+      },
+    ],
   },
 ];
 
@@ -122,7 +147,6 @@ async function deployCommands() {
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
     body: commands,
   });
-  console.log("Commands deployed");
 }
 
 // ================= READY =================
@@ -141,7 +165,6 @@ async function generateTranscript(channel, creator, closer) {
   while (true) {
     const fetched = await channel.messages.fetch({ limit: 100, before: lastId });
     if (!fetched.size) break;
-
     messages.push(...fetched.values());
     lastId = fetched.last().id;
   }
@@ -180,29 +203,53 @@ Duration: ${duration} minutes
 client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
+  const system = loadSystem();
 
-  // 🔥 SEND PANEL
+  // ===== SLASH =====
   if (interaction.isChatInputCommand()) {
-    const embed = buildPanelEmbed(categories);
+    const mode = interaction.options.getString("mode");
 
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("category_select")
-      .setPlaceholder("Select Vault Category")
-      .addOptions(categories.map(c => ({
-        label: c.label,
-        value: c.value,
-      })));
+    if (mode === "enable") {
+      system.enabled = true;
+      saveSystem(system);
+      return interaction.reply({ content: "✅ System Enabled", flags: 64 });
+    }
 
-    await interaction.channel.send({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(menu)],
-    });
+    if (mode === "disable") {
+      system.enabled = false;
+      saveSystem(system);
+      return interaction.reply({ content: "❌ System Disabled", flags: 64 });
+    }
 
-    return interaction.reply({ content: "✅ Panel sent", flags: 64 });
+    if (mode === "send") {
+      const embed = buildPanelEmbed(categories);
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId("category_select")
+        .setPlaceholder("Select Vault Category")
+        .addOptions(categories.map(c => ({
+          label: c.label,
+          value: c.value,
+        })));
+
+      await interaction.channel.send({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(menu)],
+      });
+
+      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
+    }
   }
 
-  // ================= TICKET CREATE =================
+  // ===== DISABLED BLOCK =====
+  if (!system.enabled && interaction.isStringSelectMenu()) {
+    return interaction.reply({
+      content: "❌ Ticket system is currently disabled.",
+      flags: 64,
+    });
+  }
 
+  // ===== TICKET CREATE =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.member.roles.cache.has(COOLDOWN_ROLE_ID)) {
@@ -268,15 +315,15 @@ https://www.sordum.org/downloads/?st-windows-update-blocker
 
 ━━━━━━━━━━━━━━━━━━
 
-⚠️ IMPORTANT
-Missing information may result in delays or timeout.
-
-━━━━━━━━━━━━━━━━━━
-
 Category: ${cat.label}
 
 🎮 Available Games:
-${cat.games.map(g => `${gameEmojis[g.name]} ${g.name} — ${g.tokens}`).join("\n")}`
+${cat.games.map(g => `${gameEmojis[g.name]} ${g.name} — ${g.tokens}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANT
+Missing information may result in delays or timeout.`
       )
       .setColor(0x00ffcc);
 
@@ -297,8 +344,7 @@ ${cat.games.map(g => `${gameEmojis[g.name]} ${g.name} — ${g.tokens}`).join("\n
     });
   }
 
-  // ================= CLOSE =================
-
+  // ===== CLOSE =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
@@ -332,7 +378,7 @@ Duration: ${data.duration} minutes`,
             .setDescription(
 `Transcript automatically generated for ticket #${data.ticketNumber}
 
-🎫 Ticket #${data.ticketNumber} • Created by ${creator} • ${data.messages} messages  
+🎫 Ticket #${data.ticketNumber} • Created by <@${creator.id}> • ${data.messages} messages  
 ⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
 🏷️ Subject: 🎟️ ACTIVATION  
 📅 Generated ${new Date().toLocaleString()}`
