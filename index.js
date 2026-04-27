@@ -24,7 +24,6 @@ const GUILD_ID = process.env.GUILD_ID;
 const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
-
 const ACTIVATOR_ROLE_ID = "1490945882667876402";
 
 const systemFile = "system.json";
@@ -51,7 +50,6 @@ const games = [
   { name: "Black Myth Wukong", tokens: 20 },
 ];
 
-// 🔥 GAME EMOJIS (NEW)
 const gameEmojis = {
   "Hogwarts Legacy": "🪄",
   "Hinokami Chronicles 2": "🔥",
@@ -142,8 +140,6 @@ client.once("clientReady", async () => {
 // ================= PANEL =================
 
 function buildPanelEmbed(c) {
-
-  // 🔥 CALCULATE TOTAL TOKENS (NEW)
   const totalTokens = games.reduce((sum, g) => sum + g.tokens, 0);
 
   return new EmbedBuilder()
@@ -261,31 +257,37 @@ client.on("interactionCreate", async (interaction) => {
       name: `ticket-${interaction.user.username}`,
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
-      permissionOverwrites: [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages,
-          ],
-        },
-      ],
     });
 
+    // 🔥 NEW MATCHED EMBED (SELF ACTIVATION STYLE)
     const embed = new EmbedBuilder()
-      .setTitle("🎫 Ticket Opened")
-      .setDescription(`Category: ${cat.label}
+      .setTitle("Self Activations ACTIVATION REQUEST")
+      .setDescription(
+`👋 Welcome ${interaction.user}
 
-🎮 Available Games:
-${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
+Please provide the requested information within **20 minutes**, otherwise the ticket may be automatically closed.
 
 ━━━━━━━━━━━━━━━━━━
-📌 Requirements:
-• Screenshot of game folder (WUB enabled)
-• Game properties screenshot required
-• Clean game files (NO SteamTools)
-• WAIT FOR ASSISTANCE`)
+
+📸 **REQUIRED SCREENSHOTS**
+Please send clear screenshots showing:
+• Game folder  
+• Game folder size  
+• Windows Update Blocker running  
+
+📎 Example: \`SCREENSHOT.png\`
+
+━━━━━━━━━━━━━━━━━━
+
+🛠 **WINDOWS UPDATE BLOCKER (REQUIRED)**
+https://www.sordum.org/downloads/?st-windows-update-blocker
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ **IMPORTANT**
+Missing information may result in delays or timeout.  
+Wait patiently — staff will assist you soon.`
+      )
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
