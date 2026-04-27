@@ -1,4 +1,4 @@
-// 🔥 ERROR LOGGING (ADDED - DO NOT REMOVE)
+// 🔥 ERROR LOGGING (DO NOT REMOVE)
 process.on("unhandledRejection", err => console.error(err));
 process.on("uncaughtException", err => console.error(err));
 
@@ -29,8 +29,6 @@ const TICKET_CATEGORY_ID = "1496520886558261328";
 const COOLDOWN_ROLE_ID = "1490210219702091986";
 const TRANSCRIPT_CHANNEL_ID = "1490947113939632209";
 const ACTIVATOR_ROLE_ID = "1490945882667876402";
-
-const systemFile = "system.json";
 
 // ================= CLIENT =================
 
@@ -84,45 +82,38 @@ function getCategories() {
   ];
 }
 
-// ================= FILE =================
+// ================= PANEL EMBED =================
 
-function load(file) {
-  try {
-    if (!fs.existsSync(file)) return {};
-    return JSON.parse(fs.readFileSync(file));
-  } catch {
-    return {};
-  }
+function buildPanelEmbed(c) {
+  const totalTokens = games.reduce((sum, g) => sum + g.tokens, 0);
+
+  return new EmbedBuilder()
+    .setTitle("✨ Steam Activation Vault")
+    .setDescription(
+`🎯 Select A Game From The Dropdown Below To Activate.
+
+🎟️ Total Tokens In Vault
+${totalTokens} Available
+
+🕹️ Games Listed
+A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
+
+🔥 High Demand
+A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+
+━━━━━━━━━━━━━━━━━━
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+    )
+    .setColor(0x6a0dad);
 }
 
-function save(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
-
-function isEnabled() {
-  const data = load(systemFile);
-  return data.enabled !== false;
-}
-
-// ================= SLASH =================
+// ================= SLASH COMMAND =================
 
 const commands = [
   {
     name: "panel",
-    description: "Control Steam Vault system",
-    options: [
-      {
-        name: "mode",
-        description: "enable / disable / send",
-        type: 3,
-        required: true,
-        choices: [
-          { name: "enable", value: "enable" },
-          { name: "disable", value: "disable" },
-          { name: "send", value: "send" },
-        ],
-      },
-    ],
+    description: "Send the activation panel",
   },
 ];
 
@@ -141,35 +132,8 @@ client.once("clientReady", async () => {
   await deployCommands();
 });
 
-// ================= PANEL =================
-
-function buildPanelEmbed(c) {
-  const totalTokens = games.reduce((sum, g) => sum + g.tokens, 0);
-
-  return new EmbedBuilder()
-    .setTitle("✨ Steam Activation Vault")
-    .setDescription(
-`🎯 Select A Game From The Dropdown Below To Activate.
-
-🎟️ Total Tokens In Vault  
-${totalTokens} Available  
-
-🕹️ Games Listed  
-A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
-
-🔥 High Demand  
-A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
-
-━━━━━━━━━━━━━━━━━━
-🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
-💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
-    )
-    .setColor(0x6a0dad);
-}
-
 // ================= TRANSCRIPT =================
 
-// 🔥 UPDATED (creator + closer)
 async function generateTranscript(channel, creator, closer) {
   let messages = [];
   let lastId;
@@ -185,6 +149,9 @@ async function generateTranscript(channel, creator, closer) {
   messages.reverse();
 
   const ticketNumber = Math.floor(Math.random() * 1000);
+  const duration = Math.floor(
+    (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
+  );
 
   let content = `📄 Auto-Generated Transcript
 
@@ -192,6 +159,7 @@ Ticket #${ticketNumber}
 Created by: ${creator.tag}
 Closed by: ${closer.tag}
 Messages: ${messages.length}
+Duration: ${duration} minutes
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -204,7 +172,7 @@ Messages: ${messages.length}
   const fileName = `ticket-${ticketNumber}-transcript.txt`;
   fs.writeFileSync(fileName, content);
 
-  return { fileName, ticketNumber, messages: messages.length };
+  return { fileName, ticketNumber, messages: messages.length, duration };
 }
 
 // ================= INTERACTIONS =================
@@ -213,47 +181,30 @@ client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
 
+  // 🔥 SEND PANEL
   if (interaction.isChatInputCommand()) {
-    const mode = interaction.options.getString("mode");
-    const sys = load(systemFile);
+    const embed = buildPanelEmbed(categories);
 
-    if (mode === "enable") {
-      sys.enabled = true;
-      save(systemFile, sys);
-      return interaction.reply({ content: "✅ Enabled", flags: 64 });
-    }
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("category_select")
+      .setPlaceholder("Select Vault Category")
+      .addOptions(categories.map(c => ({
+        label: c.label,
+        value: c.value,
+      })));
 
-    if (mode === "disable") {
-      sys.enabled = false;
-      save(systemFile, sys);
-      return interaction.reply({ content: "❌ Disabled", flags: 64 });
-    }
+    await interaction.channel.send({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(menu)],
+    });
 
-    if (mode === "send") {
-      const embed = buildPanelEmbed(categories);
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("category_select")
-        .setPlaceholder("Select Vault Category")
-        .addOptions(categories.map(c => ({
-          label: c.label,
-          value: c.value,
-        })));
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(menu)],
-      });
-
-      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
-    }
+    return interaction.reply({ content: "✅ Panel sent", flags: 64 });
   }
 
-  if (!isEnabled()) return;
+  // ================= TICKET CREATE =================
 
   if (interaction.isStringSelectMenu()) {
 
-    // 🔥 COOLDOWN CHECK
     if (interaction.member.roles.cache.has(COOLDOWN_ROLE_ID)) {
       return interaction.reply({
         content: "⏳ You are on cooldown. Try again later.",
@@ -261,7 +212,6 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // 🔥 PREVENT MULTIPLE TICKETS
     const existing = interaction.guild.channels.cache.find(
       c => c.name === `ticket-${interaction.user.id}`
     );
@@ -279,8 +229,6 @@ client.on("interactionCreate", async (interaction) => {
       name: `ticket-${interaction.user.id}`,
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
-
-      // 🔥 FIX VISIBILITY
       permissionOverwrites: [
         {
           id: interaction.guild.id,
@@ -298,18 +246,38 @@ client.on("interactionCreate", async (interaction) => {
     });
 
     const embed = new EmbedBuilder()
-      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATIONS") // 🔥 UPDATED TITLE
-      .setDescription(`Category: ${cat.label}
+      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATIONS")
+      .setDescription(
+`👋 Welcome ${interaction.user}
 
-🎮 Available Games:
-${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
+Please provide the requested information within 20 minutes, otherwise the ticket may be automatically closed.
 
 ━━━━━━━━━━━━━━━━━━
-📌 Requirements:
-• Screenshot of game folder (WUB enabled)
-• Game properties screenshot required
-• Clean game files (NO SteamTools)
-• WAIT FOR ASSISTANCE`)
+
+📸 REQUIRED SCREENSHOTS
+• Game folder  
+• Game folder size  
+• Windows Update Blocker running  
+
+📎 Example: SCREENSHOT.png
+
+━━━━━━━━━━━━━━━━━━
+
+🛠 WINDOWS UPDATE BLOCKER (REQUIRED)
+https://www.sordum.org/downloads/?st-windows-update-blocker
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANT
+Missing information may result in delays or timeout.
+
+━━━━━━━━━━━━━━━━━━
+
+Category: ${cat.label}
+
+🎮 Available Games:
+${cat.games.map(g => `${gameEmojis[g.name]} ${g.name} — ${g.tokens}`).join("\n")}`
+      )
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
@@ -329,12 +297,14 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
     });
   }
 
+  // ================= CLOSE =================
+
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
 
       const creatorId = interaction.channel.name.split("-")[1];
-      const creator = await interaction.guild.members.fetch(creatorId).catch(() => interaction.user);
+      const creator = await interaction.guild.members.fetch(creatorId);
 
       const data = await generateTranscript(
         interaction.channel,
@@ -345,10 +315,32 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
       const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
       await transcriptChannel.send({
+        content:
+`📄 Auto-Generated Transcript
+
+Ticket #${data.ticketNumber}
+Created by: ${creator.user.tag}
+Messages: ${data.messages}
+Duration: ${data.duration} minutes`,
         files: [data.fileName],
       });
 
-      // 🔥 APPLY COOLDOWN
+      await transcriptChannel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("📄 Auto-Generated Transcript")
+            .setDescription(
+`Transcript automatically generated for ticket #${data.ticketNumber}
+
+🎫 Ticket #${data.ticketNumber} • Created by ${creator} • ${data.messages} messages  
+⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
+🏷️ Subject: 🎟️ ACTIVATION  
+📅 Generated ${new Date().toLocaleString()}`
+            )
+            .setColor(0x2b2d31),
+        ],
+      });
+
       await creator.roles.add(COOLDOWN_ROLE_ID).catch(console.error);
 
       setTimeout(() => {
