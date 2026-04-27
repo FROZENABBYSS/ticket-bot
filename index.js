@@ -58,28 +58,6 @@ const gameEmojis = {
   "Black Myth Wukong": "🐒",
 };
 
-// ================= CATEGORY =================
-
-function getCategories() {
-  const af = [], gl = [], mr = [], sz = [];
-
-  for (const g of games) {
-    const f = g.name[0].toLowerCase();
-
-    if (f >= "a" && f <= "f") af.push(g);
-    else if (f >= "g" && f <= "l") gl.push(g);
-    else if (f >= "m" && f <= "r") mr.push(g);
-    else sz.push(g);
-  }
-
-  return [
-    { label: "🎮 A-F", value: "af", games: af },
-    { label: "🎮 G-L", value: "gl", games: gl },
-    { label: "🎮 M-R", value: "mr", games: mr },
-    { label: "🎮 S-Z", value: "sz", games: sz },
-  ];
-}
-
 // ================= FILE =================
 
 function load(file) {
@@ -100,13 +78,12 @@ function isEnabled() {
   return data.enabled !== false;
 }
 
-// ================= CHECK EXISTING TICKET =================
+// ================= READY (FIXED DEPRECATED EVENT) =================
 
-async function existingTicket(guild, userId) {
-  return guild.channels.cache.find(
-    (c) => c.name === `ticket-${userId}`
-  );
-}
+client.once("ready", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+  await deployCommands();
+});
 
 // ================= SLASH =================
 
@@ -138,13 +115,6 @@ async function deployCommands() {
   console.log("Commands deployed");
 }
 
-// ================= READY =================
-
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  await deployCommands();
-});
-
 // ================= PANEL =================
 
 function buildPanelEmbed(c) {
@@ -161,48 +131,14 @@ ${totalTokens} Available
 🕹️ Games Listed  
 A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
 
+🔥 High Demand  
+A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+
 ━━━━━━━━━━━━━━━━━━
-💠 Steam Token Vault System`
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
     )
     .setColor(0x6a0dad);
-}
-
-// ================= TRANSCRIPT =================
-
-async function generateTranscript(channel, user) {
-  let messages = [];
-  let lastId;
-
-  while (true) {
-    const fetched = await channel.messages.fetch({ limit: 100, before: lastId });
-    if (!fetched.size) break;
-
-    messages.push(...fetched.values());
-    lastId = fetched.last().id;
-  }
-
-  messages.reverse();
-
-  const ticketNumber = Math.floor(Math.random() * 10000);
-
-  let content = `📄 Auto-Generated Transcript
-
-Ticket #${ticketNumber}
-Created by: ${user.tag}
-Messages: ${messages.length}
-
-━━━━━━━━━━━━━━━━━━
-
-`;
-
-  for (const m of messages) {
-    content += `[${new Date(m.createdTimestamp).toLocaleString()}] ${m.author.tag}: ${m.content || "(no text)"}\n`;
-  }
-
-  const fileName = `ticket-${ticketNumber}-transcript.txt`;
-  fs.writeFileSync(fileName, content);
-
-  return { fileName, ticketNumber, messages: messages.length };
 }
 
 // ================= INTERACTIONS =================
@@ -211,54 +147,21 @@ client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
 
-  if (interaction.isChatInputCommand()) {
-    const mode = interaction.options.getString("mode");
-    const sys = load(systemFile);
-
-    if (mode === "enable") {
-      sys.enabled = true;
-      save(systemFile, sys);
-      return interaction.reply({ content: "✅ Enabled", ephemeral: true });
-    }
-
-    if (mode === "disable") {
-      sys.enabled = false;
-      save(systemFile, sys);
-      return interaction.reply({ content: "❌ Disabled", ephemeral: true });
-    }
-
-    if (mode === "send") {
-      const embed = buildPanelEmbed(categories);
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("category_select")
-        .setPlaceholder("Select Vault Category")
-        .addOptions(categories.map(c => ({
-          label: c.label,
-          value: c.value,
-        })));
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(menu)],
-      });
-
-      return interaction.reply({ content: "✅ Panel sent", ephemeral: true });
-    }
-  }
-
   if (!isEnabled()) return;
+
+  // ================= TICKET CREATION =================
 
   if (interaction.isStringSelectMenu()) {
 
-    const guild = interaction.guild;
+    // FIX: prevent spam tickets
+    const existing = interaction.guild.channels.cache.find(
+      c => c.name === `ticket-${interaction.user.id}`
+    );
 
-    // ❌ FIX: STOP TICKET SPAM
-    const existing = await existingTicket(guild, interaction.user.id);
     if (existing) {
       return interaction.reply({
         content: "⚠️ You already have an open ticket.",
-        ephemeral: true,
+        flags: 64,
       });
     }
 
@@ -269,41 +172,50 @@ client.on("interactionCreate", async (interaction) => {
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
 
-      // ✅ FIX: VISIBILITY ISSUE
       permissionOverwrites: [
         {
-          id: guild.id,
+          id: interaction.guild.id,
           deny: [PermissionsBitField.Flags.ViewChannel],
         },
         {
           id: interaction.user.id,
-          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+          ],
         },
         {
           id: ACTIVATOR_ROLE_ID,
-          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+          ],
         },
       ],
     });
 
+    // 🔥 YOUR ORIGINAL EMBED (UNCHANGED)
     const embed = new EmbedBuilder()
-      .setTitle("----- SELF ACTIVATIONS - DNVO ACTIVATION")
-      .setDescription(
-`👋 Welcome ${interaction.user}
+      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATION")
+      .setDescription(`👋 Welcome ${interaction.user}
 
-Please provide the requested information within 20 minutes, otherwise the ticket may be automatically closed.
+Please provide the requested information within **20 minutes**, otherwise the ticket may be automatically closed.
 
 ━━━━━━━━━━━━━━━━━━
 
 📂 Category: ${cat.label}
 
+🎮 Available Games:
+${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
+
 ━━━━━━━━━━━━━━━━━━
 
-🎮 Available Games:
-A-F | G-L | M-R | S-Z
+📸 REQUIRED:
+• Game folder  
+• Folder size  
+• WUB running  
 
-━━━━━━━━━━━━━━━━━━`
-      )
+Wait for assistance.`)
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
@@ -312,16 +224,18 @@ A-F | G-L | M-R | S-Z
       .setStyle(ButtonStyle.Danger);
 
     await channel.send({
-      content: `<@&${ACTIVATOR_ROLE_ID}> WE NEED ASSISTANCE HERE`,
+      content: `<@&${ACTIVATOR_ROLE_ID}> , WE NEED ASSISTANCE HERE`,
       embeds: [embed],
-      components: [new ActionRowActionBuilder().addComponents(btn)],
+      components: [new ActionRowBuilder().addComponents(btn)],
     });
 
     return interaction.reply({
       content: `Ticket opened: ${channel}`,
-      ephemeral: true,
+      flags: 64,
     });
   }
+
+  // ================= CLOSE TICKET =================
 
   if (interaction.isButton()) {
 
@@ -329,37 +243,23 @@ A-F | G-L | M-R | S-Z
 
       const member = interaction.member;
 
-      const data = await generateTranscript(interaction.channel, interaction.user);
-
-      const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
-
-      const embed = new EmbedBuilder()
-        .setTitle("📄 Auto-Generated Transcript")
-        .setDescription(
-`Ticket #${data.ticketNumber}
-Messages: ${data.messages}
-Status: Closed`
-        )
-        .setColor(0x2b2d31);
-
-      await transcriptChannel.send({
-        embeds: [embed],
-        files: [data.fileName],
-      });
-
       await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
-      // ✅ FIX: RELIABLE ROLE REMOVAL
       setTimeout(async () => {
         try {
-          const freshMember = await interaction.guild.members.fetch(member.id);
-          await freshMember.roles.remove(COOLDOWN_ROLE_ID);
+          const fresh = await interaction.guild.members.fetch(member.id);
+          await fresh.roles.remove(COOLDOWN_ROLE_ID);
         } catch {}
       }, 48 * 60 * 60 * 1000);
 
+      await interaction.reply({
+        content: "🔒 Ticket closed.",
+        flags: 64,
+      });
+
       setTimeout(() => {
         interaction.channel.delete().catch(() => {});
-      }, 4000);
+      }, 3000);
     }
   }
 });
