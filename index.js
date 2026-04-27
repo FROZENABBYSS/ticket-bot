@@ -144,8 +144,7 @@ function buildPanelEmbed(c) {
 
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
-    .setDescription(
-`🎯 Select A Game From The Dropdown Below To Activate.
+    .setDescription(`🎯 Select A Game From The Dropdown Below To Activate.
 
 🎟️ Total Tokens In Vault  
 ${totalTokens} Available  
@@ -158,51 +157,8 @@ A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.len
 
 ━━━━━━━━━━━━━━━━━━
 🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
-💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
-    )
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`)
     .setColor(0x6a0dad);
-}
-
-// ================= TRANSCRIPT =================
-
-async function generateTranscript(channel, user) {
-  let messages = [];
-  let lastId;
-
-  while (true) {
-    const fetched = await channel.messages.fetch({ limit: 100, before: lastId });
-    if (!fetched.size) break;
-
-    messages.push(...fetched.values());
-    lastId = fetched.last().id;
-  }
-
-  messages.reverse();
-
-  const ticketNumber = Math.floor(Math.random() * 1000);
-  const duration = Math.floor(
-    (Date.now() - (messages[0]?.createdTimestamp || Date.now())) / 60000
-  );
-
-  let content = `📄 Auto-Generated Transcript
-
-Ticket #${ticketNumber}
-Created by: ${user.tag}
-Messages: ${messages.length}
-Duration: ${duration} minutes
-
-━━━━━━━━━━━━━━━━━━
-
-`;
-
-  for (const m of messages) {
-    content += `[${new Date(m.createdTimestamp).toLocaleString()}] ${m.author.tag}: ${m.content || "(no text)"}\n`;
-  }
-
-  const fileName = `ticket-${ticketNumber}-transcript.txt`;
-  fs.writeFileSync(fileName, content);
-
-  return { fileName, ticketNumber, messages: messages.length, duration };
 }
 
 // ================= INTERACTIONS =================
@@ -211,83 +167,63 @@ client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
 
-  if (interaction.isChatInputCommand()) {
-    const mode = interaction.options.getString("mode");
-    const sys = load(systemFile);
-
-    if (mode === "enable") {
-      sys.enabled = true;
-      save(systemFile, sys);
-      return interaction.reply({ content: "✅ Enabled", flags: 64 });
-    }
-
-    if (mode === "disable") {
-      sys.enabled = false;
-      save(systemFile, sys);
-      return interaction.reply({ content: "❌ Disabled", flags: 64 });
-    }
-
-    if (mode === "send") {
-      const embed = buildPanelEmbed(categories);
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("category_select")
-        .setPlaceholder("Select Vault Category")
-        .addOptions(categories.map(c => ({
-          label: c.label,
-          value: c.value,
-        })));
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(menu)],
-      });
-
-      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
-    }
-  }
-
   if (!isEnabled()) return;
 
   if (interaction.isStringSelectMenu()) {
 
+    // 🚫 PREVENT SPAM TICKETS
+    const existing = interaction.guild.channels.cache.find(
+      c => c.name === `ticket-${interaction.user.id}`
+    );
+    if (existing) {
+      return interaction.reply({
+        content: `⚠️ You already have a ticket: ${existing}`,
+        flags: 64,
+      });
+    }
+
     const cat = categories.find(c => c.value === interaction.values[0]);
 
     const channel = await interaction.guild.channels.create({
-      name: `ticket-${interaction.user.username}`,
+      name: `ticket-${interaction.user.id}`,
       type: ChannelType.GuildText,
       parent: TICKET_CATEGORY_ID,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel],
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+          ],
+        },
+      ],
     });
 
-    // 🔥 NEW MATCHED EMBED (SELF ACTIVATION STYLE)
     const embed = new EmbedBuilder()
-      .setTitle("Self Activations ACTIVATION REQUEST")
-      .setDescription(
-`👋 Welcome ${interaction.user}
+      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATION")
+      .setDescription(`👋 Welcome ${interaction.user}
 
 Please provide the requested information within **20 minutes**, otherwise the ticket may be automatically closed.
 
 ━━━━━━━━━━━━━━━━━━
 
-📸 **REQUIRED SCREENSHOTS**
-Please send clear screenshots showing:
+📂 Category: ${cat.label}
+
+🎮 Available Games:
+${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━
+
+📸 REQUIRED:
 • Game folder  
-• Game folder size  
-• Windows Update Blocker running  
+• Folder size  
+• WUB running  
 
-📎 Example: \`SCREENSHOT.png\`
-
-━━━━━━━━━━━━━━━━━━
-
-🛠 **WINDOWS UPDATE BLOCKER (REQUIRED)**
-https://www.sordum.org/downloads/?st-windows-update-blocker
-
-━━━━━━━━━━━━━━━━━━
-
-⚠️ **IMPORTANT**
-Missing information may result in delays or timeout.  
-Wait patiently — staff will assist you soon.`
-      )
+Wait for assistance.`)
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
@@ -308,42 +244,26 @@ Wait patiently — staff will assist you soon.`
   }
 
   if (interaction.isButton()) {
-
     if (interaction.customId === "close_ticket") {
 
       const member = interaction.member;
-      const data = await generateTranscript(interaction.channel, interaction.user);
-      const transcriptChannel = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
 
-      const embed = new EmbedBuilder()
-        .setTitle("📄 Auto-Generated Transcript")
-        .setDescription(`Transcript automatically generated for ticket #${data.ticketNumber}
-
-🎫 Ticket #${data.ticketNumber} • Created by ${interaction.user} • ${data.messages} messages  
-⏱️ Duration: ${data.duration} minutes • Status: Closed (Auto-transcript)  
-🏷️ Subject: 🎟️ ACTIVATION  
-📅 Generated ${new Date().toLocaleString()}`)
-        .setColor(0x2b2d31);
-
-      await transcriptChannel.send({
-        embeds: [embed],
-        files: [data.fileName],
-      });
-
-      await interaction.reply({
-        content: "🔒 Ticket closed. Transcript saved.",
-        flags: 64,
-      });
-
+      // ✅ ADD ROLE
       await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
 
+      // ✅ REMOVE AFTER 48H
       setTimeout(() => {
         member.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
       }, 48 * 60 * 60 * 1000);
 
+      await interaction.reply({
+        content: "🔒 Ticket closed.",
+        flags: 64,
+      });
+
       setTimeout(() => {
         interaction.channel.delete().catch(() => {});
-      }, 4000);
+      }, 3000);
     }
   }
 });
