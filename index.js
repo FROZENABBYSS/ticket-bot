@@ -1,4 +1,6 @@
-// ONLY MODIFIED PARTS ARE MARKED WITH 🔥
+// 🔥 ERROR LOGGING (ADDED - DO NOT REMOVE)
+process.on("unhandledRejection", err => console.error(err));
+process.on("uncaughtException", err => console.error(err));
 
 const {
   Client,
@@ -102,9 +104,72 @@ function isEnabled() {
   return data.enabled !== false;
 }
 
+// ================= SLASH =================
+
+const commands = [
+  {
+    name: "panel",
+    description: "Control Steam Vault system",
+    options: [
+      {
+        name: "mode",
+        description: "enable / disable / send",
+        type: 3,
+        required: true,
+        choices: [
+          { name: "enable", value: "enable" },
+          { name: "disable", value: "disable" },
+          { name: "send", value: "send" },
+        ],
+      },
+    ],
+  },
+];
+
+async function deployCommands() {
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+    body: commands,
+  });
+  console.log("Commands deployed");
+}
+
+// ================= READY =================
+
+client.once("clientReady", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+  await deployCommands();
+});
+
+// ================= PANEL =================
+
+function buildPanelEmbed(c) {
+  const totalTokens = games.reduce((sum, g) => sum + g.tokens, 0);
+
+  return new EmbedBuilder()
+    .setTitle("✨ Steam Activation Vault")
+    .setDescription(
+`🎯 Select A Game From The Dropdown Below To Activate.
+
+🎟️ Total Tokens In Vault  
+${totalTokens} Available  
+
+🕹️ Games Listed  
+A-F: ${c[0].games.length} | G-L: ${c[1].games.length} | M-R: ${c[2].games.length} | S-Z: ${c[3].games.length}
+
+🔥 High Demand  
+A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.length ? "🟢 Plenty" : "🔴 Empty"} | M-R: ${c[2].games.length ? "🟢 Plenty" : "🔴 Empty"} | S-Z: ${c[3].games.length ? "🟢 Plenty" : "🔴 Empty"}
+
+━━━━━━━━━━━━━━━━━━
+🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
+    )
+    .setColor(0x6a0dad);
+}
+
 // ================= TRANSCRIPT =================
 
-// 🔥 ADDED creator + closer
+// 🔥 UPDATED (creator + closer)
 async function generateTranscript(channel, creator, closer) {
   let messages = [];
   let lastId;
@@ -148,6 +213,42 @@ client.on("interactionCreate", async (interaction) => {
 
   const categories = getCategories();
 
+  if (interaction.isChatInputCommand()) {
+    const mode = interaction.options.getString("mode");
+    const sys = load(systemFile);
+
+    if (mode === "enable") {
+      sys.enabled = true;
+      save(systemFile, sys);
+      return interaction.reply({ content: "✅ Enabled", flags: 64 });
+    }
+
+    if (mode === "disable") {
+      sys.enabled = false;
+      save(systemFile, sys);
+      return interaction.reply({ content: "❌ Disabled", flags: 64 });
+    }
+
+    if (mode === "send") {
+      const embed = buildPanelEmbed(categories);
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId("category_select")
+        .setPlaceholder("Select Vault Category")
+        .addOptions(categories.map(c => ({
+          label: c.label,
+          value: c.value,
+        })));
+
+      await interaction.channel.send({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(menu)],
+      });
+
+      return interaction.reply({ content: "✅ Panel sent", flags: 64 });
+    }
+  }
+
   if (!isEnabled()) return;
 
   if (interaction.isStringSelectMenu()) {
@@ -190,25 +291,25 @@ client.on("interactionCreate", async (interaction) => {
           allow: [
             PermissionsBitField.Flags.ViewChannel,
             PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory,
           ],
         },
       ],
     });
 
     const embed = new EmbedBuilder()
-      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATIONS") // 🔥 TITLE FIX
-      .setDescription(`👋 Welcome ${interaction.user}
+      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATIONS") // 🔥 UPDATED TITLE
+      .setDescription(`Category: ${cat.label}
 
-Please provide the requested information within **20 minutes**, otherwise the ticket may be automatically closed.
+🎮 Available Games:
+${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`).join("\n")}
 
 ━━━━━━━━━━━━━━━━━━
-
-📸 **REQUIRED SCREENSHOTS**
-• Game folder  
-• Folder size  
-• WUB running  
-
-Wait for assistance.`)
+📌 Requirements:
+• Screenshot of game folder (WUB enabled)
+• Game properties screenshot required
+• Clean game files (NO SteamTools)
+• WAIT FOR ASSISTANCE`)
       .setColor(0x00ffcc);
 
     const btn = new ButtonBuilder()
@@ -232,9 +333,6 @@ Wait for assistance.`)
 
     if (interaction.customId === "close_ticket") {
 
-      const member = interaction.member;
-
-      // 🔥 GET CREATOR FROM CHANNEL NAME
       const creatorId = interaction.channel.name.split("-")[1];
       const creator = await interaction.guild.members.fetch(creatorId).catch(() => interaction.user);
 
@@ -250,12 +348,11 @@ Wait for assistance.`)
         files: [data.fileName],
       });
 
-      // 🔥 ADD COOLDOWN ROLE TO CREATOR
-      await creator.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+      // 🔥 APPLY COOLDOWN
+      await creator.roles.add(COOLDOWN_ROLE_ID).catch(console.error);
 
-      // 🔥 REMOVE AFTER 48H
       setTimeout(() => {
-        creator.roles.remove(COOLDOWN_ROLE_ID).catch(() => {});
+        creator.roles.remove(COOLDOWN_ROLE_ID).catch(console.error);
       }, 48 * 60 * 60 * 1000);
 
       await interaction.reply({
