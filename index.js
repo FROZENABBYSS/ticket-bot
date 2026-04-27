@@ -58,6 +58,28 @@ const gameEmojis = {
   "Black Myth Wukong": "🐒",
 };
 
+// ================= CATEGORY (FIXED MISSING FUNCTION) =================
+
+function getCategories() {
+  const af = [], gl = [], mr = [], sz = [];
+
+  for (const g of games) {
+    const f = g.name[0].toLowerCase();
+
+    if (f >= "a" && f <= "f") af.push(g);
+    else if (f >= "g" && f <= "l") gl.push(g);
+    else if (f >= "m" && f <= "r") mr.push(g);
+    else sz.push(g);
+  }
+
+  return [
+    { label: "🎮 A-F", value: "af", games: af },
+    { label: "🎮 G-L", value: "gl", games: gl },
+    { label: "🎮 M-R", value: "mr", games: mr },
+    { label: "🎮 S-Z", value: "sz", games: sz },
+  ];
+}
+
 // ================= FILE =================
 
 function load(file) {
@@ -78,7 +100,7 @@ function isEnabled() {
   return data.enabled !== false;
 }
 
-// ================= READY (FIXED DEPRECATED EVENT) =================
+// ================= READY =================
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
@@ -122,8 +144,7 @@ function buildPanelEmbed(c) {
 
   return new EmbedBuilder()
     .setTitle("✨ Steam Activation Vault")
-    .setDescription(
-`🎯 Select A Game From The Dropdown Below To Activate.
+    .setDescription(`🎯 Select A Game From The Dropdown Below To Activate.
 
 🎟️ Total Tokens In Vault  
 ${totalTokens} Available  
@@ -136,68 +157,68 @@ A-F: ${c[0].games.length ? "🟢 Plenty" : "🔴 Empty"} | G-L: ${c[1].games.len
 
 ━━━━━━━━━━━━━━━━━━
 🔥 High demand • 🟢 Plenty • 🟡 Low • 🔴 Empty  
-💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`
-    )
+💠 Steam Token Vault • Tokens Regenerate As Stock Is Replenished`)
     .setColor(0x6a0dad);
 }
 
-// ================= INTERACTIONS =================
+// ================= INTERACTIONS (CRASH FIXED) =================
 
 client.on("interactionCreate", async (interaction) => {
+  try {
 
-  const categories = getCategories();
+    const categories = getCategories();
 
-  if (!isEnabled()) return;
+    if (!isEnabled()) return;
 
-  // ================= TICKET CREATION =================
+    // ================= PANEL =================
 
-  if (interaction.isStringSelectMenu()) {
+    if (interaction.isStringSelectMenu()) {
 
-    // FIX: prevent spam tickets
-    const existing = interaction.guild.channels.cache.find(
-      c => c.name === `ticket-${interaction.user.id}`
-    );
+      // FIX: prevent ticket spam
+      const existing = interaction.guild.channels.cache.find(
+        c => c.name === `ticket-${interaction.user.id}`
+      );
 
-    if (existing) {
-      return interaction.reply({
-        content: "⚠️ You already have an open ticket.",
-        flags: 64,
+      if (existing) {
+        return interaction.reply({
+          content: `⚠️ You already have a ticket: ${existing}`,
+          flags: 64,
+        });
+      }
+
+      const cat = categories.find(c => c.value === interaction.values[0]);
+
+      const channel = await interaction.guild.channels.create({
+        name: `ticket-${interaction.user.id}`,
+        type: ChannelType.GuildText,
+        parent: TICKET_CATEGORY_ID,
+
+        permissionOverwrites: [
+          {
+            id: interaction.guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+            ],
+          },
+          {
+            id: ACTIVATOR_ROLE_ID,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+            ],
+          },
+        ],
       });
-    }
 
-    const cat = categories.find(c => c.value === interaction.values[0]);
-
-    const channel = await interaction.guild.channels.create({
-      name: `ticket-${interaction.user.id}`,
-      type: ChannelType.GuildText,
-      parent: TICKET_CATEGORY_ID,
-
-      permissionOverwrites: [
-        {
-          id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel],
-        },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages,
-          ],
-        },
-        {
-          id: ACTIVATOR_ROLE_ID,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages,
-          ],
-        },
-      ],
-    });
-
-    // 🔥 YOUR ORIGINAL EMBED (UNCHANGED)
-    const embed = new EmbedBuilder()
-      .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATION")
-      .setDescription(`👋 Welcome ${interaction.user}
+      // 🔥 YOUR ORIGINAL EMBED (UNCHANGED)
+      const embed = new EmbedBuilder()
+        .setTitle("SELF ACTIVATIONS - DENUVO ACTIVATION")
+        .setDescription(`👋 Welcome ${interaction.user}
 
 Please provide the requested information within **20 minutes**, otherwise the ticket may be automatically closed.
 
@@ -216,51 +237,55 @@ ${cat.games.map(g => `${gameEmojis[g.name] || "🎮"} ${g.name} — ${g.tokens}`
 • WUB running  
 
 Wait for assistance.`)
-      .setColor(0x00ffcc);
+        .setColor(0x00ffcc);
 
-    const btn = new ButtonBuilder()
-      .setCustomId("close_ticket")
-      .setLabel("Close Ticket")
-      .setStyle(ButtonStyle.Danger);
+      const btn = new ButtonBuilder()
+        .setCustomId("close_ticket")
+        .setLabel("Close Ticket")
+        .setStyle(ButtonStyle.Danger);
 
-    await channel.send({
-      content: `<@&${ACTIVATOR_ROLE_ID}> , WE NEED ASSISTANCE HERE`,
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(btn)],
-    });
-
-    return interaction.reply({
-      content: `Ticket opened: ${channel}`,
-      flags: 64,
-    });
-  }
-
-  // ================= CLOSE TICKET =================
-
-  if (interaction.isButton()) {
-
-    if (interaction.customId === "close_ticket") {
-
-      const member = interaction.member;
-
-      await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
-
-      setTimeout(async () => {
-        try {
-          const fresh = await interaction.guild.members.fetch(member.id);
-          await fresh.roles.remove(COOLDOWN_ROLE_ID);
-        } catch {}
-      }, 48 * 60 * 60 * 1000);
-
-      await interaction.reply({
-        content: "🔒 Ticket closed.",
-        flags: 64,
+      await channel.send({
+        content: `<@&${ACTIVATOR_ROLE_ID}> , WE NEED ASSISTANCE HERE`,
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(btn)],
       });
 
-      setTimeout(() => {
-        interaction.channel.delete().catch(() => {});
-      }, 3000);
+      return interaction.reply({
+        content: `Ticket opened: ${channel}`,
+        flags: 64,
+      });
     }
+
+    // ================= CLOSE =================
+
+    if (interaction.isButton()) {
+
+      if (interaction.customId === "close_ticket") {
+
+        const member = interaction.member;
+
+        await member.roles.add(COOLDOWN_ROLE_ID).catch(() => {});
+
+        setTimeout(async () => {
+          try {
+            const fresh = await interaction.guild.members.fetch(member.id);
+            await fresh.roles.remove(COOLDOWN_ROLE_ID);
+          } catch {}
+        }, 48 * 60 * 60 * 1000);
+
+        await interaction.reply({
+          content: "🔒 Ticket closed.",
+          flags: 64,
+        });
+
+        setTimeout(() => {
+          interaction.channel.delete().catch(() => {});
+        }, 3000);
+      }
+    }
+
+  } catch (err) {
+    console.error("Interaction Error:", err);
   }
 });
 
