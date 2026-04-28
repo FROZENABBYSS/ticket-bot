@@ -130,7 +130,7 @@ const commands = [
     options: [
       {
         name: "mode",
-        description: "send / enable / disable", // 🔥 FIXED (THIS WAS MISSING)
+        description: "send / enable / disable",
         type: 3,
         required: true,
         choices: [
@@ -314,9 +314,6 @@ https://www.sordum.org/downloads/?st-windows-update-blocker
 ━━━━━━━━━━━━━━━━━━
 
 Category: ${cat.label}
-
-🎮 Available Games:
-${cat.games.map(g => `${gameEmojis[g.name]} ${g.name} — ${g.tokens}`).join("\n")}
 
 ━━━━━━━━━━━━━━━━━━
 
