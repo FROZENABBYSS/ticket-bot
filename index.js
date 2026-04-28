@@ -130,6 +130,7 @@ const commands = [
     options: [
       {
         name: "mode",
+        description: "send / enable / disable", // 🔥 FIXED (THIS WAS MISSING)
         type: 3,
         required: true,
         choices: [
@@ -205,7 +206,6 @@ client.on("interactionCreate", async (interaction) => {
   const categories = getCategories();
   const system = loadSystem();
 
-  // ===== SLASH =====
   if (interaction.isChatInputCommand()) {
     const mode = interaction.options.getString("mode");
 
@@ -241,7 +241,6 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // ===== DISABLED BLOCK =====
   if (!system.enabled && interaction.isStringSelectMenu()) {
     return interaction.reply({
       content: "❌ Ticket system is currently disabled.",
@@ -249,7 +248,6 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // ===== TICKET CREATE =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.member.roles.cache.has(COOLDOWN_ROLE_ID)) {
@@ -344,7 +342,6 @@ Missing information may result in delays or timeout.`
     });
   }
 
-  // ===== CLOSE =====
   if (interaction.isButton()) {
 
     if (interaction.customId === "close_ticket") {
